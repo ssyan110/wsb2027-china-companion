@@ -5,12 +5,12 @@ import { useOpsPanelStore } from '../../stores/ops-panel.store';
 import { ToastContainer } from '../Toast';
 
 const NAV_ITEMS = [
-  { to: '/ops/travelers', label: 'Master Table', icon: '📋' },
-  { to: '/ops/rooms', label: 'Rooms', icon: '🏨' },
-  { to: '/ops/flights', label: 'Flights', icon: '✈️' },
-  { to: '/ops/events', label: 'Events', icon: '📅' },
-  { to: '/ops/audit', label: 'Audit Log', icon: '📝' },
-] as const;
+  { to: '/ops/travelers', label: 'Master Table', icon: '📋', superAdminOnly: false },
+  { to: '/ops/rooms', label: 'Rooms', icon: '🏨', superAdminOnly: false },
+  { to: '/ops/flights', label: 'Flights', icon: '✈️', superAdminOnly: false },
+  { to: '/ops/events', label: 'Events', icon: '📅', superAdminOnly: false },
+  { to: '/ops/audit', label: 'Audit Log', icon: '📝', superAdminOnly: true },
+];
 
 export function OpsLayout() {
   const role = useAuthStore((s) => s.role);
@@ -18,10 +18,17 @@ export function OpsLayout() {
   const setUnmaskPii = useOpsPanelStore((s) => s.setUnmaskPii);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
+  const isSuperAdmin = role === 'super_admin';
+
   // Role guard: only admin and super_admin may access /ops/*
   if (role !== 'admin' && role !== 'super_admin') {
     return <Navigate to="/login" replace />;
   }
+
+  // Filter nav items based on role
+  const visibleNavItems = NAV_ITEMS.filter(
+    (item) => !item.superAdminOnly || isSuperAdmin
+  );
 
   return (
     <div className="ops-layout">
@@ -43,7 +50,7 @@ export function OpsLayout() {
           Ops Panel
         </div>
         <ul className="ops-sidebar-nav">
-          {NAV_ITEMS.map((item) => (
+          {visibleNavItems.map((item) => (
             <li key={item.to}>
               <NavLink
                 to={item.to}
@@ -75,7 +82,24 @@ export function OpsLayout() {
 
           <h1 className="ops-header-title">Operations Panel</h1>
 
-          {role === 'super_admin' && (
+          {/* Role badge */}
+          <span
+            data-testid="role-badge"
+            style={{
+              padding: '0.25rem 0.75rem',
+              borderRadius: 12,
+              fontSize: '0.75rem',
+              fontWeight: 600,
+              background: isSuperAdmin ? '#e8f5e9' : '#fff3e0',
+              color: isSuperAdmin ? '#2e7d32' : '#e65100',
+              marginLeft: 'auto',
+              marginRight: '0.75rem',
+            }}
+          >
+            {isSuperAdmin ? 'Super Admin' : 'Admin (View Only)'}
+          </span>
+
+          {isSuperAdmin && (
             <label className="ops-unmask-toggle">
               <input
                 type="checkbox"

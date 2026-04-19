@@ -117,7 +117,13 @@ describe('Property 1: Role-based route guard rejects non-admin roles', () => {
         expect(screen.getByText('Rooms')).toBeDefined();
         expect(screen.getByText('Flights')).toBeDefined();
         expect(screen.getByText('Events')).toBeDefined();
-        expect(screen.getByText('Audit Log')).toBeDefined();
+
+        // Audit Log is only visible for super_admin
+        if (role === 'super_admin') {
+          expect(screen.getByText('Audit Log')).toBeDefined();
+        } else {
+          expect(screen.queryByText('Audit Log')).toBeNull();
+        }
 
         cleanup();
       }),
