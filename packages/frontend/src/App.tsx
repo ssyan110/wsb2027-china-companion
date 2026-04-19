@@ -42,7 +42,9 @@ export function App() {
   const login = useAuthStore((s) => s.login);
   const [autoLoginDone, setAutoLoginDone] = useState(false);
 
-  // Auto-login for development — logs in as Sarah Chen (representative)
+  // Auto-login disabled in production — users pick from Quick Login tab
+  // To re-enable for local dev, uncomment the block below
+  /*
   useEffect(() => {
     if (isAuthenticated || autoLoginDone) return;
     const demoUserId = 'f0000001-0000-0000-0000-000000000001';
@@ -54,6 +56,7 @@ export function App() {
       })
       .catch(() => setAutoLoginDone(true));
   }, [isAuthenticated, autoLoginDone, login]);
+  */
 
   useEffect(() => {
     const goOnline = () => setOnline(true);
@@ -69,7 +72,7 @@ export function App() {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
-      <Route element={<Layout />}>
+      <Route element={isAuthenticated ? <Layout /> : <Navigate to="/login" replace />}>
         <Route path="/" element={<Home />} />
         <Route path="/qr" element={<QrDisplay />} />
         <Route path="/family" element={<FamilyWallet />} />

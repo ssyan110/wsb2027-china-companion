@@ -2,9 +2,17 @@ import { useState, useEffect, useCallback, FormEvent } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { apiClient } from '../lib/api';
 import { useAuthStore } from '../stores/auth.store';
-import type { MagicLinkResponse, VerifyResponse, BookingLookupResponse } from '@wsb/shared';
+import type { MagicLinkResponse, VerifyResponse, BookingLookupResponse, RoleType } from '@wsb/shared';
 
-type Tab = 'magic-link' | 'booking-lookup';
+type Tab = 'magic-link' | 'booking-lookup' | 'dev-login';
+
+interface DevUser {
+  traveler_id: string;
+  full_name_raw: string;
+  email_primary: string;
+  role_type: RoleType;
+  access_status: string;
+}
 type VerifyStatus = 'idle' | 'verifying' | 'success' | 'expired' | 'used' | 'invalid';
 
 interface BeforeInstallPromptEvent extends Event {
@@ -40,6 +48,10 @@ export default function Login() {
   const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [showInstallBanner, setShowInstallBanner] = useState(false);
 
+  // Dev login
+  const [devUsers, setDevUsers] = useState<DevUser[]>([]);
+  const [devLoginLoading, setDevLoginLoading] = useState<string | null>(null);
+
   // Capture PWA install prompt
   useEffect(() => {
     const handler = (e: Event) => {
@@ -49,6 +61,35 @@ export default function Login() {
     window.addEventListener('beforeinstallprompt', handler);
     return () => window.removeEventListener('beforeinstallprompt', handler);
   }, []);
+
+  // Fetch dev users for quick login
+  useEffect(() => {
+    fetch('/api/v1/dev/users')
+      .then((res) => res.json())
+      .then((data: { users: DevUser[] }) => setDevUsers(data.users))
+      .catch(() => {});
+  }, []);
+
+  // Handle dev login
+  const handleDevLogin = useCallback(
+    async (travelerId: string) => {
+      setDevLoginLoading(travelerId);
+      try {
+        const res = await fetch(`/api/v1/dev/login/${travelerId}`);
+        const data = await res.json() as { session_token: string; traveler_id: string; role_type: RoleType };
+        login(data.session_token, data.traveler_id, data.role_type);
+        // Navigate based on role
+        if (data.role_type === 'admin' || data.role_type === 'super_admin') {
+          navigate('/ops', { replace: true });
+        } else {
+          navigate('/', { replace: true });
+        }
+      } catch {
+        setDevLoginLoading(null);
+      }
+    },
+    [login, navigate],
+  );
 
   // Handle magic link token verification from URL
   useEffect(() => {
@@ -261,6 +302,17 @@ export default function Login() {
           >
             Booking Lookup
           </button>
+          <button
+            role="tab"
+            aria-selected={activeTab === 'dev-login'}
+            aria-controls="panel-dev-login"
+            id="tab-dev-login"
+            className={`login-tab ${activeTab === 'dev-login' ? 'login-tab-active' : ''}`}
+            onClick={() => setActiveTab('dev-login')}
+            style={{ color: '#1976d2' }}
+          >
+            Quick Login
+          </button>
         </div>
 
         {/* Magic Link panel */}
@@ -375,6 +427,80 @@ export default function Login() {
                 {bookingLoading ? 'Looking up…' : 'Look Up'}
               </button>
             </form>
+          </div>
+        )}
+
+        {/* Dev Login panel */}
+        {activeTab === 'dev-login' && (
+          <div
+            role="tabpanel"
+            id="panel-dev-login"
+            aria-labelledby="tab-dev-login"
+          >
+            <p style={{ fontSize: '0.85rem', color: '#666', marginBottom: '0.75rem' }}>
+              Select a demo account to log in instantly:
+            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              {devUsers.map((user) => {
+                const roleColors: Record<string, string> = {
+                  super_admin: '#d32f2f',
+                  admin: '#e65100',
+                  staff: '#1565c0',
+                  representative: '#2e7d32',
+                  traveler: '#37474f',
+                };
+                const roleLabels: Record<string, string> = {
+                  super_admin: 'Super Admin',
+                  admin: 'Admin',
+                  staff: 'Staff',
+                  representative: 'Representative',
+                  traveler: 'Traveler',
+                };
+                return (
+                  <button
+                    key={user.traveler_id}
+                    type="button"
+                    disabled={devLoginLoading !== null}
+                    onClick={() => handleDevLogin(user.traveler_id)}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      padding: '0.6rem 0.75rem',
+                      border: '1px solid #e0e0e0',
+                      borderRadius: 6,
+                      background: devLoginLoading === user.traveler_id ? '#f5f5f5' : '#fff',
+                      cursor: devLoginLoading ? 'wait' : 'pointer',
+                      textAlign: 'left',
+                      width: '100%',
+                    }}
+                    aria-label={`Log in as ${user.full_name_raw}`}
+                  >
+                    <div>
+                      <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>{user.full_name_raw}</div>
+                      <div style={{ fontSize: '0.75rem', color: '#999' }}>{user.email_primary}</div>
+                    </div>
+                    <span style={{
+                      fontSize: '0.7rem',
+                      fontWeight: 700,
+                      padding: '0.15rem 0.5rem',
+                      borderRadius: 10,
+                      color: '#fff',
+                      background: roleColors[user.role_type] ?? '#666',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.5px',
+                    }}>
+                      {devLoginLoading === user.traveler_id ? '...' : (roleLabels[user.role_type] ?? user.role_type)}
+                    </span>
+                  </button>
+                );
+              })}
+              {devUsers.length === 0 && (
+                <p style={{ color: '#999', textAlign: 'center', padding: '1rem 0' }}>
+                  No demo users available.
+                </p>
+              )}
+            </div>
           </div>
         )}
       </div>
