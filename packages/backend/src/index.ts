@@ -81,6 +81,13 @@ app.get('/api/v1/dev/users', async (_req, res) => {
 // Auth routes (public)
 // app.use('/api/v1/auth', createAuthRouter(pool, redis)); // Redis not set up yet
 
+// Serve frontend static files in production (BEFORE auth middleware)
+const __dirname2 = dirname(fileURLToPath(import.meta.url));
+const frontendDist = join(__dirname2, '..', '..', 'frontend', 'dist');
+if (existsSync(frontendDist)) {
+  app.use(express.static(frontendDist));
+}
+
 // Protected routes
 app.use(authMiddleware);
 app.use(rbacMiddleware);
@@ -91,14 +98,9 @@ app.use('/api/v1/admin', createAdminRouter(pool));
 // app.use('/api/v1/staff', createStaffRouter(pool)); // needs emailService wired
 app.use('/api/v1/admin/notifications', createNotificationRouter(pool));
 
-// Serve frontend static files in production
-const __dirname2 = dirname(fileURLToPath(import.meta.url));
-const frontendDist = join(__dirname2, '..', '..', 'frontend', 'dist');
+// SPA fallback: serve index.html for any non-API route (AFTER API routes)
 if (existsSync(frontendDist)) {
-  app.use(express.static(frontendDist));
-  // SPA fallback: serve index.html for any non-API route
-  app.get('*', (_req, res, next) => {
-    if (_req.path.startsWith('/api/')) return next();
+  app.get('*', (_req, res) => {
     res.sendFile(join(frontendDist, 'index.html'));
   });
 }
