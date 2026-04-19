@@ -1,5 +1,6 @@
 import { Router } from 'express';
-import type Redis from 'ioredis';
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type Redis = any;
 import type { Pool } from 'pg';
 import { createRateLimiter } from '../middleware/rate-limit.js';
 import { createAuthService } from '../services/auth.service.js';

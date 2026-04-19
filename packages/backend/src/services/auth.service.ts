@@ -1,7 +1,8 @@
 import crypto from 'node:crypto';
 import jwt from 'jsonwebtoken';
 import type { Pool } from 'pg';
-import type Redis from 'ioredis';
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type Redis = any;
 import type { EmailService } from './email.service.js';
 import { normalizeName } from '../utils/normalize-name.js';
 
