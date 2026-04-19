@@ -26,7 +26,7 @@ export default function Login() {
   const login = useAuthStore((s) => s.login);
 
   // Tab state
-  const [activeTab, setActiveTab] = useState<Tab>('magic-link');
+  const [activeTab, setActiveTab] = useState<Tab>('dev-login');
 
   // Magic link form
   const [email, setEmail] = useState('');
@@ -441,7 +441,21 @@ export default function Login() {
               Select a demo account to log in instantly:
             </p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-              {devUsers.map((user) => {
+              {(() => {
+                const roleOrder: Record<string, number> = {
+                  super_admin: 0,
+                  admin: 1,
+                  staff: 2,
+                  representative: 3,
+                  traveler: 4,
+                };
+                const sorted = [...devUsers].sort(
+                  (a, b) => (roleOrder[a.role_type] ?? 9) - (roleOrder[b.role_type] ?? 9)
+                );
+                const adminRoles = ['super_admin', 'admin', 'staff'];
+                const admins = sorted.filter((u) => adminRoles.includes(u.role_type));
+                const travelers = sorted.filter((u) => !adminRoles.includes(u.role_type));
+
                 const roleColors: Record<string, string> = {
                   super_admin: '#d32f2f',
                   admin: '#e65100',
@@ -456,7 +470,8 @@ export default function Login() {
                   representative: 'Representative',
                   traveler: 'Traveler',
                 };
-                return (
+
+                const renderUser = (user: DevUser) => (
                   <button
                     key={user.traveler_id}
                     type="button"
@@ -494,7 +509,28 @@ export default function Login() {
                     </span>
                   </button>
                 );
-              })}
+
+                return (
+                  <>
+                    {admins.length > 0 && (
+                      <>
+                        <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#999', textTransform: 'uppercase', letterSpacing: '0.05em', padding: '0.25rem 0' }}>
+                          Admin & Staff
+                        </div>
+                        {admins.map(renderUser)}
+                      </>
+                    )}
+                    {travelers.length > 0 && (
+                      <>
+                        <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#999', textTransform: 'uppercase', letterSpacing: '0.05em', padding: '0.5rem 0 0.25rem', marginTop: '0.25rem', borderTop: '1px solid #eee' }}>
+                          Travelers
+                        </div>
+                        {travelers.map(renderUser)}
+                      </>
+                    )}
+                  </>
+                );
+              })()}
               {devUsers.length === 0 && (
                 <p style={{ color: '#999', textAlign: 'center', padding: '1rem 0' }}>
                   No demo users available.

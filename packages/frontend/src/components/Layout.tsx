@@ -1,5 +1,6 @@
 import { Outlet } from 'react-router-dom';
 import { BottomNav } from './BottomNav';
+import { ToastContainer } from './Toast';
 import { useAppStore } from '../stores/app.store';
 
 export function Layout() {
@@ -19,6 +20,7 @@ export function Layout() {
         <Outlet />
       </main>
       <BottomNav />
+      <ToastContainer />
     </div>
   );
 }

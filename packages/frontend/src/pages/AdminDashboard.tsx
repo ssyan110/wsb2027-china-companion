@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { apiClient } from '../lib/api';
+import { SkeletonList } from '../components/Skeleton';
 
 interface DashboardStats {
   total_travelers: number;
@@ -30,6 +31,41 @@ interface HealthStatus {
   manifest_sync: string;
   notification_rate: number;
   scan_backlog: number;
+}
+
+function DonutChart({ activated, pending }: { activated: number; pending: number }) {
+  const total = activated + pending;
+  if (total === 0) return null;
+  const pct = Math.round((activated / total) * 100);
+  const deg = (activated / total) * 360;
+
+  return (
+    <div className="admin-donut-wrapper" aria-label={`${pct}% activated, ${100 - pct}% pending`}>
+      <div
+        className="admin-donut"
+        style={{
+          background: `conic-gradient(#16A34A ${deg}deg, #F59E0B ${deg}deg 360deg)`,
+        }}
+        role="img"
+        aria-hidden="true"
+      >
+        <div className="admin-donut-hole">
+          <span className="admin-donut-pct">{pct}%</span>
+          <span className="admin-donut-label">Active</span>
+        </div>
+      </div>
+      <div className="admin-donut-legend">
+        <div className="admin-donut-legend-item">
+          <span className="admin-donut-dot" style={{ background: '#16A34A' }} />
+          Activated ({activated})
+        </div>
+        <div className="admin-donut-legend-item">
+          <span className="admin-donut-dot" style={{ background: '#F59E0B' }} />
+          Pending ({pending})
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export default function AdminDashboard() {
@@ -64,7 +100,7 @@ export default function AdminDashboard() {
     }
   }
 
-  if (loading) return <div className="admin-page" role="status">Loading dashboard…</div>;
+  if (loading) return <div className="admin-page" role="status"><SkeletonList count={5} /></div>;
   if (error) return <div className="admin-page admin-error" role="alert">{error}</div>;
 
   return (
@@ -73,21 +109,24 @@ export default function AdminDashboard() {
 
       {/* Summary Cards */}
       <section className="admin-summary-cards" aria-label="Summary statistics">
-        <div className="admin-stat-card"><span className="admin-stat-value">{stats?.total_travelers ?? 0}</span><span className="admin-stat-label">Total Travelers</span></div>
-        <div className="admin-stat-card"><span className="admin-stat-value">{stats?.activated ?? 0}</span><span className="admin-stat-label">Activated</span></div>
-        <div className="admin-stat-card"><span className="admin-stat-value">{stats?.pending ?? 0}</span><span className="admin-stat-label">Pending</span></div>
-        <div className="admin-stat-card"><span className="admin-stat-value">{stats?.families ?? 0}</span><span className="admin-stat-label">Families</span></div>
-        <div className="admin-stat-card"><span className="admin-stat-value">{stats?.staff ?? 0}</span><span className="admin-stat-label">Staff</span></div>
+        <div className="admin-stat-card admin-stat-card-total"><span className="admin-stat-icon" aria-hidden="true">👥</span><span className="admin-stat-value">{stats?.total_travelers ?? 0}</span><span className="admin-stat-label">Total Travelers</span></div>
+        <div className="admin-stat-card admin-stat-card-active"><span className="admin-stat-icon" aria-hidden="true">✅</span><span className="admin-stat-value">{stats?.activated ?? 0}</span><span className="admin-stat-label">Activated</span></div>
+        <div className="admin-stat-card admin-stat-card-pending"><span className="admin-stat-icon" aria-hidden="true">⏳</span><span className="admin-stat-value">{stats?.pending ?? 0}</span><span className="admin-stat-label">Pending</span></div>
+        <div className="admin-stat-card admin-stat-card-families"><span className="admin-stat-icon" aria-hidden="true">👨‍👩‍👧</span><span className="admin-stat-value">{stats?.families ?? 0}</span><span className="admin-stat-label">Families</span></div>
+        <div className="admin-stat-card admin-stat-card-staff"><span className="admin-stat-icon" aria-hidden="true">🛡️</span><span className="admin-stat-value">{stats?.staff ?? 0}</span><span className="admin-stat-label">Staff</span></div>
       </section>
+
+      {/* Donut Chart */}
+      {stats && <DonutChart activated={stats.activated} pending={stats.pending} />}
 
       {/* Navigation */}
       <section className="admin-nav-grid" aria-label="Admin navigation">
-        <Link to="/admin/travelers" className="admin-nav-link">👥 Travelers</Link>
-        <Link to="/admin/groups" className="admin-nav-link">📋 Groups</Link>
-        <Link to="/admin/events" className="admin-nav-link">📅 Events</Link>
-        <Link to="/admin/dispatch" className="admin-nav-link">🚌 Dispatch</Link>
-        <Link to="/admin/notifications" className="admin-nav-link">🔔 Notifications</Link>
-        <Link to="/admin/audit" className="admin-nav-link">📝 Audit Log</Link>
+        <Link to="/admin/travelers" className="admin-nav-link"><span className="admin-nav-link-icon">👥</span><span>Travelers</span></Link>
+        <Link to="/admin/groups" className="admin-nav-link"><span className="admin-nav-link-icon">📋</span><span>Groups</span></Link>
+        <Link to="/admin/events" className="admin-nav-link"><span className="admin-nav-link-icon">📅</span><span>Events</span></Link>
+        <Link to="/admin/dispatch" className="admin-nav-link"><span className="admin-nav-link-icon">🚌</span><span>Dispatch</span></Link>
+        <Link to="/admin/notifications" className="admin-nav-link"><span className="admin-nav-link-icon">🔔</span><span>Notifications</span></Link>
+        <Link to="/admin/audit" className="admin-nav-link"><span className="admin-nav-link-icon">📝</span><span>Audit Log</span></Link>
       </section>
 
       {/* System Health */}

@@ -4,6 +4,7 @@ import { QrCode, CalendarDays, Bell, Users, Compass, ChevronRight } from 'lucide
 import { apiClient } from '../lib/api';
 import { getDb } from '../lib/db';
 import { useAuthStore } from '../stores/auth.store';
+import { HomeSkeletonCards } from '../components/Skeleton';
 import type { TravelerProfile, NotificationItem, ItineraryEvent } from '@wsb/shared';
 
 export default function Home() {
@@ -57,13 +58,14 @@ export default function Home() {
   const firstName = profile?.full_name?.split(' ')[0] ?? 'Traveler';
 
   if (loading && !profile) {
-    return (
-      <div className="loading-screen">
-        <div className="loading-spinner" />
-        <span>Loading your trip...</span>
-      </div>
-    );
+    return <HomeSkeletonCards />;
   }
+
+  // Countdown to event start
+  const eventDate = new Date('2027-06-15T00:00:00');
+  const now = new Date();
+  const diffMs = eventDate.getTime() - now.getTime();
+  const daysUntil = Math.max(0, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
 
   return (
     <div className="home-page">
@@ -71,6 +73,12 @@ export default function Home() {
         <div className="home-hero-label">WSB 2027 China Super Trip</div>
         <h1 className="home-greeting">Hello, {firstName}! 👋</h1>
         <p className="home-greeting-sub">Welcome to Beijing — your adventure awaits</p>
+        {daysUntil > 0 && (
+          <div className="home-hero-countdown" aria-label={`${daysUntil} days until event`}>
+            <span className="home-hero-countdown-number">{daysUntil}</span>
+            <span className="home-hero-countdown-label">days to go</span>
+          </div>
+        )}
       </div>
 
       <div className="home-cards">

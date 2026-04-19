@@ -2,6 +2,7 @@ import { useEffect, useState, useRef, useCallback } from 'react';
 import { apiClient } from '../lib/api';
 import { getDb } from '../lib/db';
 import { useAuthStore } from '../stores/auth.store';
+import { SkeletonList } from '../components/Skeleton';
 import type { NotificationItem } from '@wsb/shared';
 
 export default function Notifications() {
@@ -104,7 +105,14 @@ export default function Notifications() {
   const unreadCount = notifications.filter((n) => !n.read_at).length;
 
   if (loading) {
-    return <div className="notifications-page" role="status" aria-label="Loading notifications">Loading…</div>;
+    return (
+      <div className="notifications-page">
+        <div className="notifications-header">
+          <h1 className="notifications-title">Notifications</h1>
+        </div>
+        <SkeletonList count={4} />
+      </div>
+    );
   }
 
   return (

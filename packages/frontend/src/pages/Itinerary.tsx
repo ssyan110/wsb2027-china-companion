@@ -4,6 +4,7 @@ import type { LucideIcon } from 'lucide-react';
 import { apiClient } from '../lib/api';
 import { getDb } from '../lib/db';
 import { useAppStore } from '../stores/app.store';
+import { SkeletonList } from '../components/Skeleton';
 import type { ItineraryEvent } from '@wsb/shared';
 
 const EVENT_ICONS: Record<string, LucideIcon> = {
@@ -97,7 +98,14 @@ export default function Itinerary() {
   }
 
   if (loading) {
-    return <div className="itinerary-page" role="status" aria-label="Loading itinerary">Loading…</div>;
+    return (
+      <div className="itinerary-page">
+        <div className="itinerary-header">
+          <h1 className="itinerary-title">My Itinerary</h1>
+        </div>
+        <SkeletonList count={5} />
+      </div>
+    );
   }
 
   return (
