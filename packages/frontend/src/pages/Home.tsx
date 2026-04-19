@@ -42,12 +42,11 @@ export default function Home() {
         if (!cancelled) setUnreadCount(notifications.filter(n => !n.read_at).length);
       } catch { /* fallback */ }
 
-      if (role === 'representative') {
-        try {
-          const { members } = await apiClient<{ family_id: string; members: unknown[] }>('/api/v1/travelers/me/family');
-          if (!cancelled) setFamilyCount(members.length);
-        } catch { /* fallback */ }
-      }
+      // Try to load family members for any traveler type (not just representatives)
+      try {
+        const { members } = await apiClient<{ family_id: string; members: unknown[] }>('/api/v1/travelers/me/family');
+        if (!cancelled) setFamilyCount(members.length);
+      } catch { /* no family linked */ }
 
       if (!cancelled) setLoading(false);
     }
@@ -110,7 +109,7 @@ export default function Home() {
           <ChevronRight size={18} className="home-card-arrow" color="#9CA3AF" />
         </Link>
 
-        {role === 'representative' && (
+        {familyCount > 0 && (
           <Link to="/family" className="home-card home-card-family" aria-label={`Family Wallet, ${familyCount} members`}>
             <div className="home-card-icon-wrap"><Users size={24} color="#10B981" /></div>
             <div className="home-card-content">

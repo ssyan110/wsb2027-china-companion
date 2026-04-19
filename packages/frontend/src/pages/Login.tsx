@@ -259,9 +259,10 @@ export default function Login() {
           </div>
         )}
 
-        {/* Install App button — shows when PWA install is available */}
-        {installPrompt && (
-          <div style={{ marginTop: '1.25rem' }}>
+        {/* Install App — always visible with platform-specific instructions */}
+        <div style={{ marginTop: '1.25rem', paddingTop: '1.25rem', borderTop: '1px solid var(--border-light)' }}>
+          {installPrompt ? (
+            /* Android Chrome — native install prompt available */
             <button
               type="button"
               onClick={async () => { if (installPrompt) { await installPrompt.prompt(); setInstallPrompt(null); } }}
@@ -274,11 +275,23 @@ export default function Login() {
             >
               📲 Download App
             </button>
-            <p style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)', textAlign: 'center', marginTop: '0.4rem' }}>
-              Add to your home screen for quick access
-            </p>
-          </div>
-        )}
+          ) : (
+            /* iOS Safari / other browsers — show manual instructions */
+            <div style={{ textAlign: 'center' }}>
+              <p style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '0.4rem' }}>
+                📲 Add to Home Screen
+              </p>
+              <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+                {/iPhone|iPad/.test(navigator.userAgent)
+                  ? 'Tap the Share button ⬆ then "Add to Home Screen"'
+                  : /Android/.test(navigator.userAgent)
+                    ? 'Tap ⋮ menu then "Add to Home Screen"'
+                    : 'Use your browser menu to "Install" or "Add to Home Screen"'
+                }
+              </p>
+            </div>
+          )}
+        </div>
 
         {/* Staff/Admin link */}
         <div style={{ textAlign: 'center', marginTop: '1.25rem' }}>
