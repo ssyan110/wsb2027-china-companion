@@ -1,4 +1,7 @@
 import express from 'express';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { existsSync } from 'node:fs';
 import cors from 'cors';
 import helmet from 'helmet';
 import jwt from 'jsonwebtoken';
@@ -87,6 +90,18 @@ app.use('/api/v1/notifications', createNotificationStreamRouter(pool));
 app.use('/api/v1/admin', createAdminRouter(pool));
 // app.use('/api/v1/staff', createStaffRouter(pool)); // needs emailService wired
 app.use('/api/v1/admin/notifications', createNotificationRouter(pool));
+
+// Serve frontend static files in production
+const __dirname2 = dirname(fileURLToPath(import.meta.url));
+const frontendDist = join(__dirname2, '..', '..', 'frontend', 'dist');
+if (existsSync(frontendDist)) {
+  app.use(express.static(frontendDist));
+  // SPA fallback: serve index.html for any non-API route
+  app.get('*', (_req, res, next) => {
+    if (_req.path.startsWith('/api/')) return next();
+    res.sendFile(join(frontendDist, 'index.html'));
+  });
+}
 
 if (process.env.NODE_ENV !== 'test') {
   app.listen(PORT, () => {
