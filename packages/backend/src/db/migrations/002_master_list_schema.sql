@@ -89,6 +89,7 @@ ALTER TABLE flights ADD COLUMN airline         VARCHAR(64);
 ALTER TABLE flights ADD COLUMN departure_time  TIMESTAMPTZ;
 ALTER TABLE flights ADD COLUMN direction       flight_direction;
 ALTER TABLE flights ADD COLUMN airport         VARCHAR(32);       -- e.g. 'ICN-T1', 'PEK-T3'
+ALTER TABLE flights ALTER COLUMN arrival_time DROP NOT NULL;       -- departure flights don't have arrival_time
 
 -- Traveler-Flight junction — add direction and file URL
 ALTER TABLE traveler_flights ADD COLUMN direction       flight_direction;
