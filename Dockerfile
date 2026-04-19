@@ -20,8 +20,10 @@ COPY packages/frontend/ packages/frontend/
 # Build shared + backend
 RUN npx tsc -b packages/backend
 
-# Build frontend
-RUN cd packages/frontend && npx vite build
+# Build frontend (shared dist already exists from tsc -b above)
+WORKDIR /app/packages/frontend
+RUN npx vite build
+WORKDIR /app
 
 # --- Production stage ---
 FROM node:20-alpine
