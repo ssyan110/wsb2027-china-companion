@@ -18,9 +18,9 @@ interface ColumnDef {
 }
 
 const COLUMNS: ColumnDef[] = [
-  // Sticky name columns
-  { key: 'first_name', label: 'First Name', sortable: true, editable: true, sticky: true },
-  { key: 'last_name', label: 'Last Name', sortable: true, editable: true, sticky: true },
+  // Single sticky name column (combined first + last)
+  { key: 'first_name', label: 'First', sortable: true, editable: true, sticky: true },
+  { key: 'last_name', label: 'Last', sortable: true, editable: true },
   // Traveler scalars
   { key: 'full_name_raw', label: 'Full Name', sortable: false, editable: false },
   { key: 'gender', label: 'Gender', sortable: false, editable: true },
@@ -413,7 +413,7 @@ export function OpsMasterTable() {
               <tr>
                 {COLUMNS.map((col) => {
                   const stickyStyle: React.CSSProperties = col.sticky
-                    ? { position: 'sticky', left: col.key === 'first_name' ? 0 : 120, zIndex: 2, background: '#f5f5f5' }
+                    ? { position: 'sticky', left: 0, zIndex: 2, background: '#f5f5f5', minWidth: 80, maxWidth: 100 }
                     : {};
                   return (
                     <th
@@ -453,7 +453,7 @@ export function OpsMasterTable() {
                         const cellValue = getCellValue(row, col.key);
                         const isRoomCol = col.group === 'room';
                         const stickyStyle: React.CSSProperties = col.sticky
-                          ? { position: 'sticky', left: col.key === 'first_name' ? 0 : 120, zIndex: 1, background: '#fff' }
+                          ? { position: 'sticky', left: 0, zIndex: 1, background: '#fff', minWidth: 80, maxWidth: 100 }
                           : {};
 
                         // Check-in status uses CheckinManager

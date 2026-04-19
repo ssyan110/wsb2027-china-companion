@@ -259,6 +259,27 @@ export default function Login() {
           </div>
         )}
 
+        {/* Install App button — shows when PWA install is available */}
+        {installPrompt && (
+          <div style={{ marginTop: '1.25rem' }}>
+            <button
+              type="button"
+              onClick={async () => { if (installPrompt) { await installPrompt.prompt(); setInstallPrompt(null); } }}
+              className="login-btn"
+              style={{
+                background: 'linear-gradient(135deg, #1a1a2e, #16213e)',
+                color: '#fff', border: 'none', gap: '0.5rem',
+              }}
+              aria-label="Install app to home screen"
+            >
+              📲 Download App
+            </button>
+            <p style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)', textAlign: 'center', marginTop: '0.4rem' }}>
+              Add to your home screen for quick access
+            </p>
+          </div>
+        )}
+
         {/* Staff/Admin link */}
         <div style={{ textAlign: 'center', marginTop: '1.25rem' }}>
           <Link to="/ops/login" style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)', textDecoration: 'none' }}>
