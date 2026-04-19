@@ -88,15 +88,12 @@ if (existsSync(frontendDist)) {
   app.use(express.static(frontendDist));
 }
 
-// Protected routes
-app.use(authMiddleware);
-app.use(rbacMiddleware);
-
-app.use('/api/v1/travelers', createTravelerRouter(pool));
-app.use('/api/v1/notifications', createNotificationStreamRouter(pool));
-app.use('/api/v1/admin', createAdminRouter(pool));
-// app.use('/api/v1/staff', createStaffRouter(pool)); // needs emailService wired
-app.use('/api/v1/admin/notifications', createNotificationRouter(pool));
+// Protected API routes — auth middleware only applies to /api/* paths
+app.use('/api/v1/travelers', authMiddleware, rbacMiddleware, createTravelerRouter(pool));
+app.use('/api/v1/notifications', authMiddleware, rbacMiddleware, createNotificationStreamRouter(pool));
+app.use('/api/v1/admin', authMiddleware, rbacMiddleware, createAdminRouter(pool));
+// app.use('/api/v1/staff', authMiddleware, rbacMiddleware, createStaffRouter(pool)); // needs emailService wired
+app.use('/api/v1/admin/notifications', authMiddleware, rbacMiddleware, createNotificationRouter(pool));
 
 // SPA fallback: serve index.html for any non-API route (AFTER API routes)
 if (existsSync(frontendDist)) {
