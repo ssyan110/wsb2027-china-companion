@@ -35,6 +35,7 @@ import { OpsRooms } from './pages/ops/OpsRooms';
 import { OpsFlights } from './pages/ops/OpsFlights';
 import { OpsEvents } from './pages/ops/OpsEvents';
 import { OpsAuditLog } from './pages/ops/OpsAuditLog';
+import { OpsLogin } from './pages/ops/OpsLogin';
 
 export function App() {
   const setOnline = useAppStore((s) => s.setOnline);
@@ -96,6 +97,7 @@ export function App() {
       </Route>
 
       {/* Ops Panel route tree */}
+      <Route path="/ops/login" element={<OpsLogin />} />
       <Route path="/ops" element={<OpsLayout />}>
         <Route index element={<Navigate to="/ops/travelers" replace />} />
         <Route path="travelers" element={<OpsMasterTable />} />

@@ -1,18 +1,10 @@
 import { useState, useEffect, useCallback, FormEvent } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { apiClient } from '../lib/api';
 import { useAuthStore } from '../stores/auth.store';
 import type { MagicLinkResponse, VerifyResponse, BookingLookupResponse, RoleType } from '@wsb/shared';
 
-type Tab = 'magic-link' | 'booking-lookup' | 'dev-login';
-
-interface DevUser {
-  traveler_id: string;
-  full_name_raw: string;
-  email_primary: string;
-  role_type: RoleType;
-  access_status: string;
-}
+type Tab = 'magic-link' | 'booking-lookup';
 type VerifyStatus = 'idle' | 'verifying' | 'success' | 'expired' | 'used' | 'invalid';
 
 interface BeforeInstallPromptEvent extends Event {
@@ -20,525 +12,259 @@ interface BeforeInstallPromptEvent extends Event {
   userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>;
 }
 
+interface DevUser {
+  traveler_id: string;
+  full_name_raw: string;
+  email_primary: string;
+  role_type: RoleType;
+}
+
 export default function Login() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const login = useAuthStore((s) => s.login);
 
-  // Tab state
-  const [activeTab, setActiveTab] = useState<Tab>('dev-login');
-
-  // Magic link form
+  const [activeTab, setActiveTab] = useState<Tab>('booking-lookup');
   const [email, setEmail] = useState('');
   const [magicLinkSent, setMagicLinkSent] = useState(false);
   const [magicLinkLoading, setMagicLinkLoading] = useState(false);
   const [magicLinkError, setMagicLinkError] = useState('');
-
-  // Booking lookup form
   const [bookingId, setBookingId] = useState('');
   const [lastName, setLastName] = useState('');
   const [bookingLoading, setBookingLoading] = useState(false);
   const [bookingError, setBookingError] = useState('');
-
-  // Token verification
   const [verifyStatus, setVerifyStatus] = useState<VerifyStatus>('idle');
   const [verifyEmail, setVerifyEmail] = useState('');
-
-  // PWA install
   const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [showInstallBanner, setShowInstallBanner] = useState(false);
 
-  // Dev login
-  const [devUsers, setDevUsers] = useState<DevUser[]>([]);
-  const [devLoginLoading, setDevLoginLoading] = useState<string | null>(null);
+  // Demo traveler accounts (non-admin only)
+  const [demoTravelers, setDemoTravelers] = useState<DevUser[]>([]);
+  const [demoLoading, setDemoLoading] = useState<string | null>(null);
 
-  // Capture PWA install prompt
   useEffect(() => {
-    const handler = (e: Event) => {
-      e.preventDefault();
-      setInstallPrompt(e as BeforeInstallPromptEvent);
-    };
+    const handler = (e: Event) => { e.preventDefault(); setInstallPrompt(e as BeforeInstallPromptEvent); };
     window.addEventListener('beforeinstallprompt', handler);
     return () => window.removeEventListener('beforeinstallprompt', handler);
   }, []);
 
-  // Fetch dev users for quick login
+  // Fetch demo travelers (exclude admin/staff — those use /ops/login)
   useEffect(() => {
     fetch('/api/v1/dev/users')
-      .then((res) => res.json())
-      .then((data: { users: DevUser[] }) => setDevUsers(data.users))
+      .then((r) => r.json())
+      .then((d: { users: DevUser[] }) => {
+        setDemoTravelers(d.users.filter((u) => !['admin', 'super_admin', 'staff', 'staff_desk'].includes(u.role_type)));
+      })
       .catch(() => {});
   }, []);
 
-  // Handle dev login
-  const handleDevLogin = useCallback(
-    async (travelerId: string) => {
-      setDevLoginLoading(travelerId);
-      try {
-        const res = await fetch(`/api/v1/dev/login/${travelerId}`);
-        const data = await res.json() as { session_token: string; traveler_id: string; role_type: RoleType };
-        login(data.session_token, data.traveler_id, data.role_type);
-        // Navigate based on role
-        if (data.role_type === 'admin' || data.role_type === 'super_admin') {
-          navigate('/ops', { replace: true });
-        } else {
-          navigate('/', { replace: true });
-        }
-      } catch {
-        setDevLoginLoading(null);
-      }
-    },
-    [login, navigate],
-  );
+  const handleDemoLogin = useCallback(async (id: string) => {
+    setDemoLoading(id);
+    try {
+      const res = await fetch(`/api/v1/dev/login/${id}`);
+      const data = await res.json() as { session_token: string; traveler_id: string; role_type: RoleType };
+      login(data.session_token, data.traveler_id, data.role_type);
+      navigate('/', { replace: true });
+    } catch { setDemoLoading(null); }
+  }, [login, navigate]);
 
-  // Handle magic link token verification from URL
   useEffect(() => {
     const token = searchParams.get('token');
     if (!token) return;
-
     setVerifyStatus('verifying');
-
     apiClient<VerifyResponse>(`/api/v1/auth/magic-link/verify?token=${encodeURIComponent(token)}`)
       .then((data) => {
         setVerifyStatus('success');
         login(data.session_token, data.traveler_id, data.role_type);
-        // Show PWA install prompt if available
-        if (installPrompt) {
-          setShowInstallBanner(true);
-        } else {
-          navigate('/', { replace: true });
-        }
+        if (installPrompt) setShowInstallBanner(true);
+        else navigate('/', { replace: true });
       })
       .catch((err: Error) => {
         const msg = err.message.toLowerCase();
-        if (msg.includes('410') || msg.includes('expired')) {
-          setVerifyStatus('expired');
-        } else if (msg.includes('409') || msg.includes('used')) {
-          setVerifyStatus('used');
-        } else {
-          setVerifyStatus('invalid');
-        }
+        if (msg.includes('410') || msg.includes('expired')) setVerifyStatus('expired');
+        else if (msg.includes('409') || msg.includes('used')) setVerifyStatus('used');
+        else setVerifyStatus('invalid');
       });
   }, [searchParams, login, navigate, installPrompt]);
 
-  // Handle magic link request
-  const handleMagicLink = useCallback(
-    async (e: FormEvent) => {
-      e.preventDefault();
-      setMagicLinkError('');
-      setMagicLinkSent(false);
-      setMagicLinkLoading(true);
+  const handleMagicLink = useCallback(async (e: FormEvent) => {
+    e.preventDefault();
+    setMagicLinkError(''); setMagicLinkSent(false); setMagicLinkLoading(true);
+    try {
+      await apiClient<MagicLinkResponse>('/api/v1/auth/magic-link', { method: 'POST', body: JSON.stringify({ email }) });
+      setMagicLinkSent(true);
+    } catch { setMagicLinkError('Unable to send magic link. Please try again.'); }
+    finally { setMagicLinkLoading(false); }
+  }, [email]);
 
-      try {
-        await apiClient<MagicLinkResponse>('/api/v1/auth/magic-link', {
-          method: 'POST',
-          body: JSON.stringify({ email }),
-        });
-        setMagicLinkSent(true);
-      } catch {
-        setMagicLinkError('Unable to send magic link. Please try again.');
-      } finally {
-        setMagicLinkLoading(false);
-      }
-    },
-    [email],
-  );
+  const handleBookingLookup = useCallback(async (e: FormEvent) => {
+    e.preventDefault();
+    setBookingError(''); setBookingLoading(true);
+    try {
+      const data = await apiClient<BookingLookupResponse>('/api/v1/auth/booking-lookup', {
+        method: 'POST', body: JSON.stringify({ booking_id: bookingId, last_name: lastName }),
+      });
+      login(data.session_token, data.traveler_id, 'traveler');
+      if (installPrompt) setShowInstallBanner(true);
+      else navigate('/', { replace: true });
+    } catch { setBookingError('Booking not found. Please check your details.'); }
+    finally { setBookingLoading(false); }
+  }, [bookingId, lastName, login, navigate, installPrompt]);
 
-  // Handle booking lookup
-  const handleBookingLookup = useCallback(
-    async (e: FormEvent) => {
-      e.preventDefault();
-      setBookingError('');
-      setBookingLoading(true);
-
-      try {
-        const data = await apiClient<BookingLookupResponse>('/api/v1/auth/booking-lookup', {
-          method: 'POST',
-          body: JSON.stringify({ booking_id: bookingId, last_name: lastName }),
-        });
-        login(data.session_token, data.traveler_id, 'traveler');
-        if (installPrompt) {
-          setShowInstallBanner(true);
-        } else {
-          navigate('/', { replace: true });
-        }
-      } catch {
-        setBookingError('Booking not found. Please check your details and try again.');
-      } finally {
-        setBookingLoading(false);
-      }
-    },
-    [bookingId, lastName, login, navigate, installPrompt],
-  );
-
-  // Handle resend magic link
-  const handleResend = useCallback(async () => {
+  const handleResend = useCallback(() => {
     if (!verifyEmail) return;
-    setVerifyStatus('idle');
-    setActiveTab('magic-link');
-    setEmail(verifyEmail);
+    setVerifyStatus('idle'); setActiveTab('magic-link'); setEmail(verifyEmail);
   }, [verifyEmail]);
 
-  // Handle PWA install
   const handleInstall = useCallback(async () => {
     if (!installPrompt) return;
-    await installPrompt.prompt();
-    setShowInstallBanner(false);
-    navigate('/', { replace: true });
+    await installPrompt.prompt(); setShowInstallBanner(false); navigate('/', { replace: true });
   }, [installPrompt, navigate]);
 
   const handleDismissInstall = useCallback(() => {
-    setShowInstallBanner(false);
-    navigate('/', { replace: true });
+    setShowInstallBanner(false); navigate('/', { replace: true });
   }, [navigate]);
 
-  // Token verification states
+  // --- Verification states ---
   if (verifyStatus === 'verifying') {
     return (
-      <div className="login-page" role="main" aria-label="Login">
-        <div className="login-card">
-          <h1 className="login-title">WSB 2027 China</h1>
-          <p className="login-subtitle" aria-live="polite">Verifying your magic link…</p>
-        </div>
-      </div>
+      <div className="login-page" role="main"><div className="login-card">
+        <h1 className="login-title">WSB 2027 China</h1>
+        <p className="login-subtitle" aria-live="polite">Verifying your link…</p>
+      </div></div>
     );
   }
 
   if (verifyStatus === 'expired' || verifyStatus === 'used' || verifyStatus === 'invalid') {
-    const messages: Record<string, string> = {
-      expired: 'This magic link has expired.',
-      used: 'This magic link has already been used.',
-      invalid: 'This magic link is invalid.',
-    };
-
+    const msgs: Record<string, string> = { expired: 'This link has expired.', used: 'This link was already used.', invalid: 'This link is invalid.' };
     return (
-      <div className="login-page" role="main" aria-label="Login">
-        <div className="login-card">
-          <h1 className="login-title">WSB 2027 China</h1>
-          <div className="login-error-block" role="alert">
-            <p className="login-error-message">{messages[verifyStatus]}</p>
-            <div className="login-resend-group">
-              <label htmlFor="resend-email" className="login-label">
-                Enter your email to receive a new link
-              </label>
-              <input
-                id="resend-email"
-                type="email"
-                className="login-input"
-                placeholder="you@example.com"
-                value={verifyEmail}
-                onChange={(e) => setVerifyEmail(e.target.value)}
-                aria-label="Email address for resend"
-              />
-              <button
-                className="login-btn login-btn-primary"
-                onClick={handleResend}
-                disabled={!verifyEmail}
-                aria-label="Resend magic link"
-              >
-                Resend Magic Link
-              </button>
-            </div>
+      <div className="login-page" role="main"><div className="login-card">
+        <h1 className="login-title">WSB 2027 China</h1>
+        <div className="login-error-block" role="alert">
+          <p className="login-error-message">{msgs[verifyStatus]}</p>
+          <div className="login-resend-group">
+            <label htmlFor="resend-email" className="login-label">Enter your email for a new link</label>
+            <input id="resend-email" type="email" className="login-input" placeholder="you@example.com" value={verifyEmail} onChange={(e) => setVerifyEmail(e.target.value)} />
+            <button className="login-btn login-btn-primary" onClick={handleResend} disabled={!verifyEmail}>Resend Link</button>
           </div>
         </div>
-      </div>
+      </div></div>
     );
   }
 
-  // PWA install banner
   if (showInstallBanner) {
     return (
-      <div className="login-page" role="main" aria-label="Install app">
-        <div className="login-card">
-          <h1 className="login-title">WSB 2027 China</h1>
-          <p className="login-subtitle">Add to your home screen for the best experience</p>
-          <div className="login-install-actions">
-            <button
-              className="login-btn login-btn-primary"
-              onClick={handleInstall}
-              aria-label="Install app"
-            >
-              Install App
-            </button>
-            <button
-              className="login-btn login-btn-secondary"
-              onClick={handleDismissInstall}
-              aria-label="Skip installation"
-            >
-              Skip for Now
-            </button>
-          </div>
-        </div>
-      </div>
+      <div className="login-page" role="main"><div className="login-card">
+        <h1 className="login-title">WSB 2027 China</h1>
+        <p className="login-subtitle">Add to your home screen for the best experience</p>
+        <button className="login-btn login-btn-primary" onClick={handleInstall}>Install App</button>
+        <button className="login-btn login-btn-secondary" onClick={handleDismissInstall}>Skip for Now</button>
+      </div></div>
     );
   }
 
-  // Main login form
+  // --- Main traveler login ---
   return (
-    <div className="login-page" role="main" aria-label="Login">
+    <div className="login-page" role="main" aria-label="Traveler Login">
       <div className="login-card">
-        <h1 className="login-title">WSB 2027 China</h1>
-        <p className="login-subtitle">Digital Companion</p>
+        <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
+          <div style={{ fontSize: '2.5rem', marginBottom: '0.5rem' }}>🇨🇳</div>
+          <h1 className="login-title">WSB 2027 China</h1>
+          <p className="login-subtitle">Your Digital Travel Companion</p>
+        </div>
 
-        {/* Tab navigation */}
-        <div className="login-tabs" role="tablist" aria-label="Login method">
-          <button
-            role="tab"
-            aria-selected={activeTab === 'magic-link'}
-            aria-controls="panel-magic-link"
-            id="tab-magic-link"
-            className={`login-tab ${activeTab === 'magic-link' ? 'login-tab-active' : ''}`}
-            onClick={() => setActiveTab('magic-link')}
-          >
-            Magic Link
+        {/* Tabs: only traveler-friendly options */}
+        <div className="login-tabs" role="tablist" aria-label="Sign in method">
+          <button role="tab" aria-selected={activeTab === 'booking-lookup'} className={`login-tab ${activeTab === 'booking-lookup' ? 'login-tab-active' : ''}`} onClick={() => setActiveTab('booking-lookup')}>
+            Find My Booking
           </button>
-          <button
-            role="tab"
-            aria-selected={activeTab === 'booking-lookup'}
-            aria-controls="panel-booking-lookup"
-            id="tab-booking-lookup"
-            className={`login-tab ${activeTab === 'booking-lookup' ? 'login-tab-active' : ''}`}
-            onClick={() => setActiveTab('booking-lookup')}
-          >
-            Booking Lookup
-          </button>
-          <button
-            role="tab"
-            aria-selected={activeTab === 'dev-login'}
-            aria-controls="panel-dev-login"
-            id="tab-dev-login"
-            className={`login-tab ${activeTab === 'dev-login' ? 'login-tab-active' : ''}`}
-            onClick={() => setActiveTab('dev-login')}
-            style={{ color: '#1976d2' }}
-          >
-            Quick Login
+          <button role="tab" aria-selected={activeTab === 'magic-link'} className={`login-tab ${activeTab === 'magic-link' ? 'login-tab-active' : ''}`} onClick={() => setActiveTab('magic-link')}>
+            Email Sign In
           </button>
         </div>
 
-        {/* Magic Link panel */}
+        {/* Booking Lookup — default, most intuitive for travelers */}
+        {activeTab === 'booking-lookup' && (
+          <div role="tabpanel">
+            <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '1rem', lineHeight: 1.5 }}>
+              Enter your booking ID and last name to access your trip details.
+            </p>
+            <form onSubmit={handleBookingLookup} noValidate>
+              <div className="login-field">
+                <label htmlFor="booking-id" className="login-label">Booking ID</label>
+                <input id="booking-id" type="text" className="login-input" placeholder="e.g. WSB-2027-001" value={bookingId} onChange={(e) => setBookingId(e.target.value)} required aria-required="true" />
+              </div>
+              <div className="login-field">
+                <label htmlFor="last-name" className="login-label">Last Name</label>
+                <input id="last-name" type="text" className="login-input" placeholder="As shown on your booking" value={lastName} onChange={(e) => setLastName(e.target.value)} required autoComplete="family-name" aria-required="true" />
+              </div>
+              {bookingError && <p className="login-error" role="alert">{bookingError}</p>}
+              <button type="submit" className="login-btn login-btn-primary" disabled={bookingLoading || !bookingId || !lastName}>
+                {bookingLoading ? 'Looking up…' : 'Sign In'}
+              </button>
+            </form>
+          </div>
+        )}
+
+        {/* Magic Link */}
         {activeTab === 'magic-link' && (
-          <div
-            role="tabpanel"
-            id="panel-magic-link"
-            aria-labelledby="tab-magic-link"
-          >
+          <div role="tabpanel">
             {magicLinkSent ? (
               <div className="login-success" aria-live="polite">
-                <p className="login-success-text">
-                  ✓ Check your email for a magic link to sign in.
-                </p>
-                <button
-                  className="login-btn login-btn-secondary"
-                  onClick={() => setMagicLinkSent(false)}
-                  aria-label="Send another magic link"
-                >
-                  Send Another
-                </button>
+                <p className="login-success-text">✓ Check your email for a sign-in link.</p>
+                <button className="login-btn login-btn-secondary" onClick={() => setMagicLinkSent(false)}>Send Another</button>
               </div>
             ) : (
               <form onSubmit={handleMagicLink} noValidate>
+                <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '1rem', lineHeight: 1.5 }}>
+                  We'll send a sign-in link to your registered email address.
+                </p>
                 <div className="login-field">
-                  <label htmlFor="magic-email" className="login-label">
-                    Email Address
-                  </label>
-                  <input
-                    id="magic-email"
-                    type="email"
-                    className="login-input"
-                    placeholder="you@example.com"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    required
-                    autoComplete="email"
-                    aria-required="true"
-                    aria-describedby={magicLinkError ? 'magic-error' : undefined}
-                  />
+                  <label htmlFor="magic-email" className="login-label">Email Address</label>
+                  <input id="magic-email" type="email" className="login-input" placeholder="you@example.com" value={email} onChange={(e) => setEmail(e.target.value)} required autoComplete="email" aria-required="true" />
                 </div>
-                {magicLinkError && (
-                  <p id="magic-error" className="login-error" role="alert">
-                    {magicLinkError}
-                  </p>
-                )}
-                <button
-                  type="submit"
-                  className="login-btn login-btn-primary"
-                  disabled={magicLinkLoading || !email}
-                  aria-label="Send magic link"
-                >
-                  {magicLinkLoading ? 'Sending…' : 'Send Magic Link'}
+                {magicLinkError && <p className="login-error" role="alert">{magicLinkError}</p>}
+                <button type="submit" className="login-btn login-btn-primary" disabled={magicLinkLoading || !email}>
+                  {magicLinkLoading ? 'Sending…' : 'Send Sign-In Link'}
                 </button>
               </form>
             )}
           </div>
         )}
 
-        {/* Booking Lookup panel */}
-        {activeTab === 'booking-lookup' && (
-          <div
-            role="tabpanel"
-            id="panel-booking-lookup"
-            aria-labelledby="tab-booking-lookup"
-          >
-            <form onSubmit={handleBookingLookup} noValidate>
-              <div className="login-field">
-                <label htmlFor="booking-id" className="login-label">
-                  Booking ID
-                </label>
-                <input
-                  id="booking-id"
-                  type="text"
-                  className="login-input"
-                  placeholder="e.g. WSB-12345"
-                  value={bookingId}
-                  onChange={(e) => setBookingId(e.target.value)}
-                  required
-                  aria-required="true"
-                  aria-describedby={bookingError ? 'booking-error' : undefined}
-                />
-              </div>
-              <div className="login-field">
-                <label htmlFor="last-name" className="login-label">
-                  Last Name
-                </label>
-                <input
-                  id="last-name"
-                  type="text"
-                  className="login-input"
-                  placeholder="Your last name"
-                  value={lastName}
-                  onChange={(e) => setLastName(e.target.value)}
-                  required
-                  autoComplete="family-name"
-                  aria-required="true"
-                  aria-describedby={bookingError ? 'booking-error' : undefined}
-                />
-              </div>
-              {bookingError && (
-                <p id="booking-error" className="login-error" role="alert">
-                  {bookingError}
-                </p>
-              )}
-              <button
-                type="submit"
-                className="login-btn login-btn-primary"
-                disabled={bookingLoading || !bookingId || !lastName}
-                aria-label="Look up booking"
-              >
-                {bookingLoading ? 'Looking up…' : 'Look Up'}
-              </button>
-            </form>
-          </div>
-        )}
-
-        {/* Dev Login panel */}
-        {activeTab === 'dev-login' && (
-          <div
-            role="tabpanel"
-            id="panel-dev-login"
-            aria-labelledby="tab-dev-login"
-          >
-            <p style={{ fontSize: '0.85rem', color: '#666', marginBottom: '0.75rem' }}>
-              Select a demo account to log in instantly:
+        {/* Demo traveler quick-pick (only non-admin users) */}
+        {demoTravelers.length > 0 && (
+          <div style={{ marginTop: '1.5rem', paddingTop: '1.25rem', borderTop: '1px solid var(--border-light)' }}>
+            <p style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.5rem' }}>
+              Demo Accounts
             </p>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-              {(() => {
-                const roleOrder: Record<string, number> = {
-                  super_admin: 0,
-                  admin: 1,
-                  staff: 2,
-                  representative: 3,
-                  traveler: 4,
-                };
-                const sorted = [...devUsers].sort(
-                  (a, b) => (roleOrder[a.role_type] ?? 9) - (roleOrder[b.role_type] ?? 9)
-                );
-                const adminRoles = ['super_admin', 'admin', 'staff'];
-                const admins = sorted.filter((u) => adminRoles.includes(u.role_type));
-                const travelers = sorted.filter((u) => !adminRoles.includes(u.role_type));
-
-                const roleColors: Record<string, string> = {
-                  super_admin: '#d32f2f',
-                  admin: '#e65100',
-                  staff: '#1565c0',
-                  representative: '#2e7d32',
-                  traveler: '#37474f',
-                };
-                const roleLabels: Record<string, string> = {
-                  super_admin: 'Super Admin',
-                  admin: 'Admin',
-                  staff: 'Staff',
-                  representative: 'Representative',
-                  traveler: 'Traveler',
-                };
-
-                const renderUser = (user: DevUser) => (
-                  <button
-                    key={user.traveler_id}
-                    type="button"
-                    disabled={devLoginLoading !== null}
-                    onClick={() => handleDevLogin(user.traveler_id)}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      padding: '0.6rem 0.75rem',
-                      border: '1px solid #e0e0e0',
-                      borderRadius: 6,
-                      background: devLoginLoading === user.traveler_id ? '#f5f5f5' : '#fff',
-                      cursor: devLoginLoading ? 'wait' : 'pointer',
-                      textAlign: 'left',
-                      width: '100%',
-                    }}
-                    aria-label={`Log in as ${user.full_name_raw}`}
-                  >
-                    <div>
-                      <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>{user.full_name_raw}</div>
-                      <div style={{ fontSize: '0.75rem', color: '#999' }}>{user.email_primary}</div>
-                    </div>
-                    <span style={{
-                      fontSize: '0.7rem',
-                      fontWeight: 700,
-                      padding: '0.15rem 0.5rem',
-                      borderRadius: 10,
-                      color: '#fff',
-                      background: roleColors[user.role_type] ?? '#666',
-                      textTransform: 'uppercase',
-                      letterSpacing: '0.5px',
-                    }}>
-                      {devLoginLoading === user.traveler_id ? '...' : (roleLabels[user.role_type] ?? user.role_type)}
-                    </span>
-                  </button>
-                );
-
-                return (
-                  <>
-                    {admins.length > 0 && (
-                      <>
-                        <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#999', textTransform: 'uppercase', letterSpacing: '0.05em', padding: '0.25rem 0' }}>
-                          Admin & Staff
-                        </div>
-                        {admins.map(renderUser)}
-                      </>
-                    )}
-                    {travelers.length > 0 && (
-                      <>
-                        <div style={{ fontSize: '0.7rem', fontWeight: 700, color: '#999', textTransform: 'uppercase', letterSpacing: '0.05em', padding: '0.5rem 0 0.25rem', marginTop: '0.25rem', borderTop: '1px solid #eee' }}>
-                          Travelers
-                        </div>
-                        {travelers.map(renderUser)}
-                      </>
-                    )}
-                  </>
-                );
-              })()}
-              {devUsers.length === 0 && (
-                <p style={{ color: '#999', textAlign: 'center', padding: '1rem 0' }}>
-                  No demo users available.
-                </p>
-              )}
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
+              {demoTravelers.map((u) => (
+                <button
+                  key={u.traveler_id}
+                  type="button"
+                  disabled={demoLoading !== null}
+                  onClick={() => handleDemoLogin(u.traveler_id)}
+                  style={{
+                    padding: '0.4rem 0.75rem', border: '1px solid var(--border-medium)', borderRadius: 'var(--radius-full)',
+                    background: demoLoading === u.traveler_id ? '#f0f0f0' : 'var(--bg-card)', cursor: demoLoading ? 'wait' : 'pointer',
+                    fontSize: '0.8rem', fontWeight: 500, color: 'var(--text-primary)', fontFamily: 'inherit',
+                  }}
+                  aria-label={`Sign in as ${u.full_name_raw}`}
+                >
+                  {demoLoading === u.traveler_id ? '…' : u.full_name_raw}
+                </button>
+              ))}
             </div>
           </div>
         )}
+
+        {/* Staff/Admin link */}
+        <div style={{ textAlign: 'center', marginTop: '1.25rem' }}>
+          <Link to="/ops/login" style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)', textDecoration: 'none' }}>
+            Staff & Admin Login →
+          </Link>
+        </div>
       </div>
     </div>
   );
