@@ -18,7 +18,10 @@ COPY packages/backend/ packages/backend/
 COPY packages/frontend/ packages/frontend/
 
 # Build shared + backend
-RUN npx tsc -b packages/backend
+RUN npx tsc -b packages/backend --force
+
+# Verify shared dist exists
+RUN ls packages/shared/dist/index.js
 
 # Build frontend (shared dist already exists from tsc -b above)
 WORKDIR /app/packages/frontend
