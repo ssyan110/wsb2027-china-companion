@@ -24,8 +24,13 @@ async function seedDatabase(): Promise<void> {
     }
 
     const seedSql = await readFile(join(__dirname, 'seed.sql'), 'utf-8');
+    await client.query('BEGIN');
     await client.query(seedSql);
+    await client.query('COMMIT');
     console.log('✓ Seed data inserted.');
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    console.error('Seed failed (non-fatal, app will start without demo data):', (err as Error).message);
   } finally {
     await client.end();
   }
