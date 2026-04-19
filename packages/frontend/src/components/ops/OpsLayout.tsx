@@ -6,7 +6,7 @@ import { ToastContainer } from '../Toast';
 
 const NAV_ITEMS = [
   { to: '/ops/travelers', label: 'Master Table', icon: '📋', superAdminOnly: false },
-  { to: '/ops/rooms', label: 'Rooms', icon: '🏨', superAdminOnly: false },
+  { to: '/ops/rooms', label: 'Hotels', icon: '🏨', superAdminOnly: false },
   { to: '/ops/flights', label: 'Flights', icon: '✈️', superAdminOnly: false },
   { to: '/ops/events', label: 'Events', icon: '📅', superAdminOnly: false },
   { to: '/ops/audit', label: 'Audit Log', icon: '📝', superAdminOnly: true },
