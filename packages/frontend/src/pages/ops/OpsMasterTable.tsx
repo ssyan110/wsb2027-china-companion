@@ -248,11 +248,16 @@ function AddTravelerModal({ onClose, onSuccess }: { onClose: () => void; onSucce
     setError(null);
     try {
       const payload = {
-        ...form,
+        full_name: `${form.first_name} ${form.last_name}`.trim(),
+        email: form.email,
+        role_type: form.role_type,
+        first_name: form.first_name,
+        last_name: form.last_name,
         age: form.age ? Number(form.age) : undefined,
         booking_id: form.booking_id || undefined,
         phone: form.phone || undefined,
         gender: form.gender || undefined,
+        pax_type: form.pax_type || undefined,
       };
       await apiClient('/api/v1/admin/travelers', {
         method: 'POST',
