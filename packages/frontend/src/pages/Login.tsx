@@ -38,35 +38,11 @@ export default function Login() {
   const [installPrompt, setInstallPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [showInstallBanner, setShowInstallBanner] = useState(false);
 
-  // Demo traveler accounts (non-admin only)
-  const [demoTravelers, setDemoTravelers] = useState<DevUser[]>([]);
-  const [demoLoading, setDemoLoading] = useState<string | null>(null);
-
   useEffect(() => {
     const handler = (e: Event) => { e.preventDefault(); setInstallPrompt(e as BeforeInstallPromptEvent); };
     window.addEventListener('beforeinstallprompt', handler);
     return () => window.removeEventListener('beforeinstallprompt', handler);
   }, []);
-
-  // Fetch demo travelers (exclude admin/staff — those use /ops/login)
-  useEffect(() => {
-    fetch('/api/v1/dev/users')
-      .then((r) => r.json())
-      .then((d: { users: DevUser[] }) => {
-        setDemoTravelers(d.users.filter((u) => !['admin', 'super_admin', 'staff', 'staff_desk'].includes(u.role_type)));
-      })
-      .catch(() => {});
-  }, []);
-
-  const handleDemoLogin = useCallback(async (id: string) => {
-    setDemoLoading(id);
-    try {
-      const res = await fetch(`/api/v1/dev/login/${id}`);
-      const data = await res.json() as { session_token: string; traveler_id: string; role_type: RoleType };
-      login(data.session_token, data.traveler_id, data.role_type);
-      navigate('/', { replace: true });
-    } catch { setDemoLoading(null); }
-  }, [login, navigate]);
 
   useEffect(() => {
     const token = searchParams.get('token');
@@ -229,33 +205,6 @@ export default function Login() {
                 </button>
               </form>
             )}
-          </div>
-        )}
-
-        {/* Demo traveler quick-pick (only non-admin users) */}
-        {demoTravelers.length > 0 && (
-          <div style={{ marginTop: '1.5rem', paddingTop: '1.25rem', borderTop: '1px solid var(--border-light)' }}>
-            <p style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-tertiary)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '0.5rem' }}>
-              Demo Accounts
-            </p>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
-              {demoTravelers.map((u) => (
-                <button
-                  key={u.traveler_id}
-                  type="button"
-                  disabled={demoLoading !== null}
-                  onClick={() => handleDemoLogin(u.traveler_id)}
-                  style={{
-                    padding: '0.4rem 0.75rem', border: '1px solid var(--border-medium)', borderRadius: 'var(--radius-full)',
-                    background: demoLoading === u.traveler_id ? '#f0f0f0' : 'var(--bg-card)', cursor: demoLoading ? 'wait' : 'pointer',
-                    fontSize: '0.8rem', fontWeight: 500, color: 'var(--text-primary)', fontFamily: 'inherit',
-                  }}
-                  aria-label={`Sign in as ${u.full_name_raw}`}
-                >
-                  {demoLoading === u.traveler_id ? '…' : u.full_name_raw}
-                </button>
-              ))}
-            </div>
           </div>
         )}
 
