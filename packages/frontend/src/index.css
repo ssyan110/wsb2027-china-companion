@@ -397,7 +397,7 @@ html, body, #root {
 .home-card-desc {
   font-size: 0.8125rem;
   color: var(--text-secondary);
-  margin-top: 2px;
+  margin-top: 4px;
   line-height: 1.4;
   white-space: nowrap;
   overflow: hidden;
@@ -459,21 +459,21 @@ html, body, #root {
   font-size: 1.125rem;
   font-weight: 700;
   color: var(--text-primary);
-  margin-top: var(--space-sm);
+  margin-top: var(--space-md);
 }
 
 .qr-role {
   font-size: 0.8125rem;
   color: var(--text-secondary);
   text-transform: capitalize;
-  margin-top: 2px;
+  margin-top: 4px;
 }
 
 .qr-group {
   font-size: 0.75rem;
   color: var(--brand-primary);
   font-weight: 600;
-  margin-top: var(--space-xs);
+  margin-top: var(--space-sm);
   letter-spacing: 0.02em;
 }
 
@@ -536,10 +536,10 @@ html, body, #root {
 .itinerary-event-card {
   display: flex;
   gap: var(--space-md);
-  padding: var(--space-md);
+  padding: var(--space-md) var(--space-md) var(--space-md);
   background: var(--bg-card);
   border-radius: var(--radius-md);
-  margin-bottom: var(--space-sm);
+  margin-bottom: var(--space-md);
   box-shadow: var(--shadow-sm);
   border-left: 3px solid transparent;
   transition: border-color var(--duration-fast);
@@ -574,20 +574,20 @@ html, body, #root {
   font-size: 0.8125rem;
   color: var(--brand-primary);
   font-weight: 500;
-  margin-top: 2px;
+  margin-top: 6px;
 }
 
 .itinerary-event-location {
   font-size: 0.8125rem;
   color: var(--text-secondary);
-  margin-top: 2px;
+  margin-top: 4px;
 }
 
 .itinerary-event-desc {
   font-size: 0.75rem;
   color: var(--text-tertiary);
-  margin-top: var(--space-xs);
-  line-height: 1.4;
+  margin-top: var(--space-sm);
+  line-height: 1.5;
 }
 
 .itinerary-empty {
@@ -633,7 +633,7 @@ html, body, #root {
   list-style: none;
   display: flex;
   flex-direction: column;
-  gap: var(--space-sm);
+  gap: var(--space-md);
   padding-bottom: var(--space-lg);
 }
 
@@ -670,14 +670,14 @@ html, body, #root {
 .notification-body {
   font-size: 0.8125rem;
   color: var(--text-secondary);
-  margin-top: 4px;
-  line-height: 1.4;
+  margin-top: 6px;
+  line-height: 1.5;
 }
 
 .notification-time {
   font-size: 0.6875rem;
   color: var(--text-tertiary);
-  margin-top: var(--space-xs);
+  margin-top: var(--space-sm);
 }
 
 .notification-dot {
@@ -710,7 +710,7 @@ html, body, #root {
 .toolkit-cards {
   display: flex;
   flex-direction: column;
-  gap: var(--space-sm);
+  gap: var(--space-md);
 }
 
 .toolkit-card {
@@ -751,7 +751,8 @@ html, body, #root {
 .toolkit-card-desc {
   font-size: 0.8125rem;
   color: var(--text-secondary);
-  margin-top: 2px;
+  margin-top: 4px;
+  line-height: 1.4;
 }
 
 /* ─── Taxi Card ────────────────────────────────────────────── */
@@ -827,7 +828,7 @@ html, body, #root {
   list-style: none;
   display: flex;
   flex-direction: column;
-  gap: var(--space-sm);
+  gap: var(--space-md);
 }
 
 .family-member-card {
@@ -876,7 +877,7 @@ html, body, #root {
   color: var(--text-secondary);
   text-transform: capitalize;
   display: block;
-  margin-top: 2px;
+  margin-top: 4px;
 }
 
 .family-member-arrow {
@@ -1080,7 +1081,7 @@ html, body, #root {
   display: flex;
   align-items: center;
   gap: var(--space-md);
-  padding: var(--space-sm) var(--space-md);
+  padding: var(--space-md) var(--space-md);
   border-bottom: 1px solid var(--border-light);
 }
 
@@ -1088,8 +1089,8 @@ html, body, #root {
 
 .phrasebook-phrase { flex: 1; }
 .phrasebook-en { font-size: 0.875rem; font-weight: 500; color: var(--text-primary); display: block; }
-.phrasebook-cn { font-size: 1rem; font-weight: 600; color: var(--brand-primary); display: block; margin-top: 2px; }
-.phrasebook-pinyin { font-size: 0.75rem; color: var(--text-tertiary); display: block; font-style: italic; }
+.phrasebook-cn { font-size: 1rem; font-weight: 600; color: var(--brand-primary); display: block; margin-top: 4px; }
+.phrasebook-pinyin { font-size: 0.75rem; color: var(--text-tertiary); display: block; font-style: italic; margin-top: 2px; }
 
 .phrasebook-speak-btn {
   background: none;
@@ -1144,10 +1145,10 @@ html, body, #root {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: var(--space-sm) var(--space-md);
+  padding: var(--space-md) var(--space-md);
   background: var(--bg-card);
   border-radius: var(--radius-sm);
-  margin-bottom: var(--space-xs);
+  margin-bottom: var(--space-sm);
 }
 
 .emergency-item-label { font-size: 0.875rem; font-weight: 500; }
@@ -1161,8 +1162,8 @@ html, body, #root {
 }
 
 .emergency-contact-name { font-size: 0.9375rem; font-weight: 600; }
-.emergency-contact-phone { font-size: 1rem; font-weight: 700; color: var(--brand-primary); text-decoration: none; display: block; margin-top: 4px; }
-.emergency-contact-address { font-size: 0.8125rem; color: var(--text-secondary); margin-top: 4px; line-height: 1.4; }
+.emergency-contact-phone { font-size: 1rem; font-weight: 700; color: var(--brand-primary); text-decoration: none; display: block; margin-top: 6px; }
+.emergency-contact-address { font-size: 0.8125rem; color: var(--text-secondary); margin-top: 6px; line-height: 1.5; }
 
 /* ─── Loading State ────────────────────────────────────────── */
 .loading-screen {
@@ -1473,7 +1474,7 @@ html, body, #root {
 }
 
 .ops-table th {
-  padding: 0.5rem 0.6rem;
+  padding: 0.6rem 0.75rem;
   text-align: left;
   border-bottom: 2px solid #ccc;
   background: #f5f5f5;
@@ -1484,7 +1485,7 @@ html, body, #root {
 }
 
 .ops-table td {
-  padding: 0.4rem 0.6rem;
+  padding: 0.5rem 0.75rem;
   border-bottom: 1px solid #eee;
   white-space: nowrap;
   max-width: 200px;
@@ -1591,13 +1592,13 @@ html, body, #root {
 .admin-stat-card {
   background: var(--bg-card);
   border-radius: var(--radius-md);
-  padding: var(--space-md);
+  padding: var(--space-lg) var(--space-md);
   box-shadow: var(--shadow-card);
   display: flex;
   flex-direction: column;
   align-items: center;
   text-align: center;
-  gap: var(--space-xs);
+  gap: var(--space-sm);
   border-top: 3px solid transparent;
   transition: transform var(--duration-fast);
 }
