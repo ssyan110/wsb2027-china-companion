@@ -20,6 +20,9 @@ export function createRateLimiter(redis: Redis, opts: RateLimitOptions) {
   const options = { ...DEFAULT_OPTIONS, ...opts };
 
   return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    // Skip rate limiting if Redis is not available
+    if (!redis) { next(); return; }
+
     const key = `${options.keyPrefix}${options.keyGenerator(req)}`;
     const now = Date.now();
     const windowStart = now - options.windowMs;

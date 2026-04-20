@@ -78,8 +78,8 @@ app.get('/api/v1/dev/users', async (_req, res) => {
   }
 });
 
-// Auth routes (public)
-// app.use('/api/v1/auth', createAuthRouter(pool, redis)); // Redis not set up yet
+// Auth routes (public — mounted without Redis, rate limiting disabled)
+app.use('/api/v1/auth', createAuthRouter(pool, null));
 
 // Serve frontend static files in production (BEFORE auth middleware)
 const __dirname2 = dirname(fileURLToPath(import.meta.url));
