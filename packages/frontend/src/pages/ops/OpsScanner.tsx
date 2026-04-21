@@ -85,12 +85,24 @@ export function OpsScanner() {
 
   const loadQrMap = useCallback(async () => {
     setQrMapLoading(true);
+    // Try localStorage cache first
+    try {
+      const cached = localStorage.getItem('wsb_qr_map');
+      if (cached) {
+        const entries = JSON.parse(cached) as QrMapEntry[];
+        const map = new Map<string, QrMapEntry>();
+        for (const t of entries) map.set(t.token_value, t);
+        setQrMap(map);
+      }
+    } catch { /* ignore bad cache or missing localStorage */ }
+    // Then fetch fresh from API
     try {
       const res = await apiClient<{ tokens: QrMapEntry[] }>('/api/v1/admin/qr-map');
       const map = new Map<string, QrMapEntry>();
       for (const t of res.tokens) map.set(t.token_value, t);
       setQrMap(map);
-    } catch { /* will fall back to booking_id lookup */ }
+      try { localStorage.setItem('wsb_qr_map', JSON.stringify(res.tokens)); } catch { /* quota or unavailable */ }
+    } catch { /* will fall back to cached data or booking_id lookup */ }
     setQrMapLoading(false);
   }, []);
 

@@ -767,6 +767,24 @@ export function createAdminRouter(db: Pool) {
     } catch { res.status(500).json({ error: 'server_error', message: 'Internal server error' }); }
   });
 
+  // ── Event Attendance Update ────────────────────────────────
+
+  router.patch('/event-attendance', async (req, res) => {
+    try {
+      if (!req.traveler_id) { res.status(401).json({ error: 'unauthorized', message: 'Authentication required' }); return; }
+      const { traveler_id, event_name, attended } = req.body as { traveler_id?: string; event_name?: string; attended?: boolean };
+      if (!traveler_id || !event_name || typeof attended !== 'boolean') {
+        res.status(400).json({ error: 'validation_error', message: 'traveler_id, event_name, and attended (boolean) are required' }); return;
+      }
+      await db.query(
+        `UPDATE event_attendance SET attended = $1
+         WHERE traveler_id = $2 AND event_id IN (SELECT event_id FROM events WHERE name = $3)`,
+        [attended, traveler_id, event_name],
+      );
+      res.json({ success: true });
+    } catch { res.status(500).json({ error: 'server_error', message: 'Internal server error' }); }
+  });
+
   // ── Assignment endpoints ─────────────────────────────────
 
   router.post('/travelers/:id/assign-group', async (req, res) => {

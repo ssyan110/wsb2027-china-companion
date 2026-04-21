@@ -88,6 +88,24 @@ if (existsSync(frontendDist)) {
   app.use(express.static(frontendDist));
 }
 
+// Simple CSRF protection: reject non-same-origin POST/PATCH/DELETE that aren't JSON
+app.use('/api', (req, res, next) => {
+  if (['POST', 'PATCH', 'PUT', 'DELETE'].includes(req.method)) {
+    const origin = req.headers.origin;
+    const host = req.headers.host;
+    // Allow if no origin (same-origin requests) or origin matches host
+    if (origin && !origin.includes(host ?? '')) {
+      // Also allow if Content-Type is application/json (not form submission)
+      const ct = req.headers['content-type'] ?? '';
+      if (!ct.includes('application/json')) {
+        res.status(403).json({ error: 'forbidden', message: 'CSRF check failed' });
+        return;
+      }
+    }
+  }
+  next();
+});
+
 // Protected API routes — auth middleware only applies to /api/* paths
 app.use('/api/v1/travelers', authMiddleware, rbacMiddleware, createTravelerRouter(pool));
 app.use('/api/v1/notifications', authMiddleware, rbacMiddleware, createNotificationStreamRouter(pool));

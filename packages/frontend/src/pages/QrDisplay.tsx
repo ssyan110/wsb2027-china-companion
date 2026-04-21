@@ -50,16 +50,20 @@ export default function QrDisplay() {
       if (cachedToken && !cancelled) setQrToken(cachedToken.token_value);
       if (cachedProfile && !cancelled) setProfile(cachedProfile);
 
+      // Always fetch fresh profile to verify token validity (even when cached)
       try {
         const p = await apiClient<TravelerProfile>('/api/v1/travelers/me');
         if (!cancelled) {
           setProfile(p);
-          setQrToken(p.qr_token);
+          // Update QR token if it changed (e.g. token was reissued)
+          if (p.qr_token) {
+            setQrToken(p.qr_token);
+            await db.put('qrToken', { token_value: p.qr_token, traveler_name: p.full_name }, 'me');
+          }
           await db.put('profile', p, 'me');
-          await db.put('qrToken', { token_value: p.qr_token, traveler_name: p.full_name }, 'me');
         }
       } catch {
-        // use cached data
+        // Offline — keep cached token
       }
 
       if (!cancelled) setLoading(false);

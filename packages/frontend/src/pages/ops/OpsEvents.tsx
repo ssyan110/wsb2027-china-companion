@@ -1,6 +1,7 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useCallback } from 'react';
 import { useOpsPanelStore } from '../../stores/ops-panel.store';
 import { useAuthStore } from '../../stores/auth.store';
+import { apiClient } from '../../lib/api';
 
 interface EventGroup {
   event_name: string;
@@ -21,6 +22,17 @@ export function OpsEvents() {
   const fetchData = useOpsPanelStore((s) => s.fetchData);
 
   useEffect(() => { if (data.length === 0) fetchData(); }, [data.length, fetchData]);
+
+  const toggleAttendance = useCallback(async (travelerId: string, eventName: string, attended: boolean) => {
+    try {
+      await apiClient('/api/v1/admin/event-attendance', {
+        method: 'PATCH',
+        body: JSON.stringify({ traveler_id: travelerId, event_name: eventName, attended }),
+      });
+      // Refresh data to reflect the change
+      fetchData();
+    } catch { /* ignore errors */ }
+  }, [fetchData]);
 
   const eventGroups = useMemo(() => {
     const map = new Map<string, EventGroup>();
@@ -87,6 +99,7 @@ export function OpsEvents() {
                       <th style={{ textAlign: 'left', padding: '0.4rem 1rem' }}>Name</th>
                       <th style={{ textAlign: 'left', padding: '0.4rem 0.5rem' }}>Fleet #</th>
                       <th style={{ textAlign: 'center', padding: '0.4rem 0.5rem' }}>Attended</th>
+                      {isSuperAdmin && <th style={{ textAlign: 'center', padding: '0.4rem 0.5rem' }}>Action</th>}
                     </tr>
                   </thead>
                   <tbody>
@@ -97,6 +110,16 @@ export function OpsEvents() {
                         <td style={{ padding: '0.3rem 0.5rem', textAlign: 'center' }}>
                           {a.attended === true ? '✅' : a.attended === false ? '❌' : '—'}
                         </td>
+                        {isSuperAdmin && (
+                          <td style={{ padding: '0.3rem 0.5rem', textAlign: 'center' }}>
+                            <button
+                              onClick={() => toggleAttendance(a.traveler_id, eg.event_name, !(a.attended === true))}
+                              style={{ padding: '0.15rem 0.4rem', fontSize: '0.7rem', border: '1px solid #ccc', borderRadius: 4, background: a.attended === true ? '#fee2e2' : '#dcfce7', cursor: 'pointer' }}
+                            >
+                              {a.attended === true ? 'Mark Absent' : 'Mark Attended'}
+                            </button>
+                          </td>
+                        )}
                       </tr>
                     ))}
                   </tbody>

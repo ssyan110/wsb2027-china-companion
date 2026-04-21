@@ -21,7 +21,7 @@ const DEFAULT_EMERGENCY: EmergencyData = {
     address: '55 An Jia Lou Road, Chaoyang District, Beijing',
   },
   operations: {
-    label: 'WSB Event Operations Hotline',
+    label: 'JBA Operations Hotline',
     phone: '+86-400-888-0000',
   },
   hospital: {

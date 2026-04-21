@@ -44,9 +44,20 @@ export default function Home() {
 
       // Try to load family members for any traveler type (not just representatives)
       try {
-        const { members } = await apiClient<{ family_id: string; members: unknown[] }>('/api/v1/travelers/me/family');
-        if (!cancelled) setFamilyCount(members.length);
-      } catch { /* no family linked */ }
+        const familyData = await apiClient<{ family_id: string; members: unknown[] }>('/api/v1/travelers/me/family');
+        if (!cancelled) setFamilyCount(familyData.members.length);
+        // Cache for offline
+        await db.put('syncMeta', { entity: 'family', last_synced: JSON.stringify(familyData) });
+      } catch {
+        // Try cache
+        try {
+          const cached = await db.get('syncMeta', 'family');
+          if (cached && !cancelled) {
+            const familyData = JSON.parse(cached.last_synced) as { members: unknown[] };
+            setFamilyCount(familyData.members?.length ?? 0);
+          }
+        } catch { /* no family linked */ }
+      }
 
       if (!cancelled) setLoading(false);
     }

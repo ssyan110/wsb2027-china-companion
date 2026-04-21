@@ -17,6 +17,11 @@ export const useAuthStore = create<AuthState>((set) => ({
   isAuthenticated: false,
   login: (token, travelerId, role) =>
     set({ session_token: token, traveler_id: travelerId, role, isAuthenticated: true }),
-  logout: () =>
-    set({ session_token: null, traveler_id: null, role: null, isAuthenticated: false }),
+  logout: () => {
+    set({ session_token: null, traveler_id: null, role: null, isAuthenticated: false });
+    // Clear all cached data
+    try { localStorage.removeItem('wsb_qr_map'); } catch { /* ignore */ }
+    // Clear IndexedDB caches
+    try { indexedDB.deleteDatabase('wsb-companion'); } catch { /* ignore */ }
+  },
 }));
