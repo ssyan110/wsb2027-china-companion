@@ -16,14 +16,37 @@ const DEFAULT_OPTIONS: Required<RateLimitOptions> = {
   keyGenerator: (req: Request) => req.ip ?? 'unknown',
 };
 
+// In-memory fallback when Redis is not available
+const memoryStore = new Map<string, { count: number; resetAt: number }>();
+
 export function createRateLimiter(redis: Redis, opts: RateLimitOptions) {
   const options = { ...DEFAULT_OPTIONS, ...opts };
 
   return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
-    // Skip rate limiting if Redis is not available
-    if (!redis) { next(); return; }
-
     const key = `${options.keyPrefix}${options.keyGenerator(req)}`;
+
+    // Use in-memory rate limiting when Redis is not available
+    if (!redis) {
+      const now = Date.now();
+      const entry = memoryStore.get(key) ?? { count: 0, resetAt: now + options.windowMs };
+      if (now > entry.resetAt) {
+        entry.count = 0;
+        entry.resetAt = now + options.windowMs;
+      }
+      entry.count++;
+      memoryStore.set(key, entry);
+
+      res.setHeader('X-RateLimit-Limit', options.maxRequests);
+      res.setHeader('X-RateLimit-Remaining', Math.max(0, options.maxRequests - entry.count));
+
+      if (entry.count > options.maxRequests) {
+        res.status(429).json({ error: 'rate_limited', message: 'Too many requests' });
+        return;
+      }
+      next();
+      return;
+    }
+
     const now = Date.now();
     const windowStart = now - options.windowMs;
 

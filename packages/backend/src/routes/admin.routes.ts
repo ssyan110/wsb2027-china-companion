@@ -27,6 +27,63 @@ export function createAdminRouter(db: Pool) {
   const familyService = createFamilyService({ db });
   const masterListService = createMasterListService({ db, auditService });
 
+  // ── Check-in persistence (Fix #2) ─────────────────────────
+
+  router.post('/checkin', async (req, res) => {
+    try {
+      if (!req.traveler_id) { res.status(401).json({ error: 'unauthorized', message: 'Authentication required' }); return; }
+      const { traveler_id, session, fleet, status } = req.body as {
+        traveler_id?: string; session?: string; fleet?: string;
+        status?: 'pass' | 'wrong_fleet_override' | 'denied';
+      };
+      if (!traveler_id || !session || !status) {
+        res.status(400).json({ error: 'validation_error', message: 'traveler_id, session, and status are required' }); return;
+      }
+
+      const shouldCheckIn = status === 'pass' || status === 'wrong_fleet_override';
+
+      const client = await db.connect();
+      try {
+        await client.query('BEGIN');
+
+        // Log to scan_logs
+        const scanResult = status === 'pass' ? 'pass' : status === 'wrong_fleet_override' ? 'override' : 'fail';
+        await client.query(
+          `INSERT INTO scan_logs (staff_id, traveler_id, qr_token_value, scan_mode, result, session, fleet, scanned_at)
+           VALUES ($1, $2, $3, $4, $5::scan_result, $6, $7, NOW())`,
+          [req.traveler_id, traveler_id, '', session, scanResult, session, fleet ?? null],
+        );
+
+        if (shouldCheckIn) {
+          if (session === 'hotel-checkin') {
+            // Update travelers.checkin_status
+            await client.query(
+              `UPDATE travelers SET checkin_status = 'checked_in', updated_at = NOW() WHERE traveler_id = $1`,
+              [traveler_id],
+            );
+          } else {
+            // Update event_attendance.attended for the matching event
+            await client.query(
+              `UPDATE event_attendance SET attended = true
+               WHERE traveler_id = $1 AND event_id IN (SELECT event_id FROM events WHERE name = $2)`,
+              [traveler_id, session],
+            );
+          }
+        }
+
+        await client.query('COMMIT');
+        res.json({ success: true, traveler_id, session, status });
+      } catch (err) {
+        await client.query('ROLLBACK');
+        throw err;
+      } finally {
+        client.release();
+      }
+    } catch {
+      res.status(500).json({ error: 'server_error', message: 'Internal server error' });
+    }
+  });
+
   // ── Master List ──────────────────────────────────────────────
 
   // GET /api/v1/admin/qr-map — returns QR token → traveler_id mapping for scanner
@@ -607,6 +664,68 @@ export function createAdminRouter(db: Pool) {
       const result = await entitiesService.updateBus(req.params.id, req.body as UpdateBusInput);
       if ('error' in result) { res.status(404).json(result); return; }
       res.json(result);
+    } catch { res.status(500).json({ error: 'server_error', message: 'Internal server error' }); }
+  });
+
+  // ── Flights CRUD ─────────────────────────────────────────
+
+  router.get('/flights', async (req, res) => {
+    try {
+      if (!req.traveler_id) { res.status(401).json({ error: 'unauthorized', message: 'Authentication required' }); return; }
+      const result = await db.query(
+        `SELECT flight_id, airline, flight_number, direction, arrival_time, departure_time, airport, terminal, created_at
+         FROM flights ORDER BY arrival_time DESC NULLS LAST`,
+      );
+      res.json({ flights: result.rows });
+    } catch { res.status(500).json({ error: 'server_error', message: 'Internal server error' }); }
+  });
+
+  router.post('/flights', async (req, res) => {
+    try {
+      if (!req.traveler_id) { res.status(401).json({ error: 'unauthorized', message: 'Authentication required' }); return; }
+      const { airline, flight_number, direction, arrival_time, departure_time, airport, terminal } = req.body as {
+        airline?: string; flight_number?: string; direction?: string;
+        arrival_time?: string; departure_time?: string; airport?: string; terminal?: string;
+      };
+      if (!flight_number) {
+        res.status(400).json({ error: 'validation_error', message: 'flight_number is required' }); return;
+      }
+      const result = await db.query(
+        `INSERT INTO flights (airline, flight_number, direction, arrival_time, departure_time, airport, terminal)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
+         RETURNING *`,
+        [airline ?? null, flight_number, direction ?? null, arrival_time ?? null, departure_time ?? null, airport ?? null, terminal ?? null],
+      );
+      res.status(201).json(result.rows[0]);
+    } catch { res.status(500).json({ error: 'server_error', message: 'Internal server error' }); }
+  });
+
+  router.patch('/flights/:id', async (req, res) => {
+    try {
+      if (!req.traveler_id) { res.status(401).json({ error: 'unauthorized', message: 'Authentication required' }); return; }
+      const fields = req.body as Record<string, unknown>;
+      const allowed = ['airline', 'flight_number', 'direction', 'arrival_time', 'departure_time', 'airport', 'terminal'];
+      const setClauses: string[] = [];
+      const values: unknown[] = [];
+      let idx = 1;
+      for (const key of allowed) {
+        if (fields[key] !== undefined) {
+          setClauses.push(`${key} = $${idx++}`);
+          values.push(fields[key]);
+        }
+      }
+      if (setClauses.length === 0) {
+        const existing = await db.query('SELECT * FROM flights WHERE flight_id = $1', [req.params.id]);
+        if (existing.rows.length === 0) { res.status(404).json({ error: 'not_found', message: 'Flight not found' }); return; }
+        res.json(existing.rows[0]); return;
+      }
+      values.push(req.params.id);
+      const result = await db.query(
+        `UPDATE flights SET ${setClauses.join(', ')} WHERE flight_id = $${idx} RETURNING *`,
+        values,
+      );
+      if (result.rows.length === 0) { res.status(404).json({ error: 'not_found', message: 'Flight not found' }); return; }
+      res.json(result.rows[0]);
     } catch { res.status(500).json({ error: 'server_error', message: 'Internal server error' }); }
   });
 

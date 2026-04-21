@@ -506,6 +506,7 @@ export function OpsMasterTable() {
   const handleCancel = useCallback(() => { setEditingCell(null); }, [setEditingCell]);
 
   const handleCheckinChange = useCallback(async (travelerId: string, newStatus: string) => {
+    if (!confirm('Change check-in status?')) return;
     await patchTraveler(travelerId, 'checkin_status', newStatus);
   }, [patchTraveler]);
 

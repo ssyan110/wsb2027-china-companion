@@ -520,17 +520,52 @@ export function createAdminService(deps: AdminServiceDeps) {
       validRows.push(parseCsvRow(row));
     }
 
-    // Bulk insert valid rows in a transaction
+    // Insert valid rows individually with per-row error handling
     let imported = 0;
     if (validRows.length > 0) {
       const client = await db.connect();
       try {
         await client.query('BEGIN');
-        imported = await bulkInsertTravelers(client, validRows);
+        for (const row of validRows) {
+          try {
+            const travelerResult = await client.query(
+              `INSERT INTO travelers
+                 (full_name_raw, full_name_normalized, email_primary, role_type,
+                  booking_id, guardian_id, phone, passport_name)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+               RETURNING traveler_id`,
+              [
+                row.full_name,
+                row.normalized_name,
+                row.email,
+                row.role_type,
+                row.booking_id,
+                row.guardian_id,
+                row.phone,
+                row.passport_name,
+              ],
+            );
+
+            const travelerId = travelerResult.rows[0].traveler_id;
+
+            await client.query(
+              `INSERT INTO qr_tokens (traveler_id, token_value, token_hash, is_active)
+               VALUES ($1, $2, $3, true)`,
+              [travelerId, row.qr_token, row.token_hash],
+            );
+
+            imported++;
+          } catch (err) {
+            allErrors.push({
+              row: validRows.indexOf(row) + 1,
+              field: '',
+              reason: (err as Error).message,
+            });
+          }
+        }
         await client.query('COMMIT');
       } catch {
         await client.query('ROLLBACK');
-        imported = 0;
       } finally {
         client.release();
       }

@@ -2,9 +2,8 @@ import { useState, useEffect, useCallback, FormEvent } from 'react';
 import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { apiClient } from '../lib/api';
 import { useAuthStore } from '../stores/auth.store';
-import type { MagicLinkResponse, VerifyResponse, BookingLookupResponse, RoleType } from '@wsb/shared';
+import type { VerifyResponse, BookingLookupResponse, RoleType } from '@wsb/shared';
 
-type Tab = 'magic-link' | 'booking-lookup';
 type VerifyStatus = 'idle' | 'verifying' | 'success' | 'expired' | 'used' | 'invalid';
 
 interface BeforeInstallPromptEvent extends Event {
@@ -12,23 +11,12 @@ interface BeforeInstallPromptEvent extends Event {
   userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>;
 }
 
-interface DevUser {
-  traveler_id: string;
-  full_name_raw: string;
-  email_primary: string;
-  role_type: RoleType;
-}
-
 export default function Login() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const login = useAuthStore((s) => s.login);
 
-  const [activeTab, setActiveTab] = useState<Tab>('booking-lookup');
-  const [email, setEmail] = useState('');
-  const [magicLinkSent, setMagicLinkSent] = useState(false);
-  const [magicLinkLoading, setMagicLinkLoading] = useState(false);
-  const [magicLinkError, setMagicLinkError] = useState('');
+  const [activeTab] = useState('booking-lookup');
   const [bookingId, setBookingId] = useState('');
   const [lastName, setLastName] = useState('');
   const [bookingLoading, setBookingLoading] = useState(false);
@@ -63,16 +51,6 @@ export default function Login() {
       });
   }, [searchParams, login, navigate, installPrompt]);
 
-  const handleMagicLink = useCallback(async (e: FormEvent) => {
-    e.preventDefault();
-    setMagicLinkError(''); setMagicLinkSent(false); setMagicLinkLoading(true);
-    try {
-      await apiClient<MagicLinkResponse>('/api/v1/auth/magic-link', { method: 'POST', body: JSON.stringify({ email }) });
-      setMagicLinkSent(true);
-    } catch { setMagicLinkError('Unable to send magic link. Please try again.'); }
-    finally { setMagicLinkLoading(false); }
-  }, [email]);
-
   const handleBookingLookup = useCallback(async (e: FormEvent) => {
     e.preventDefault();
     setBookingError(''); setBookingLoading(true);
@@ -89,7 +67,7 @@ export default function Login() {
 
   const handleResend = useCallback(() => {
     if (!verifyEmail) return;
-    setVerifyStatus('idle'); setActiveTab('magic-link'); setEmail(verifyEmail);
+    setVerifyStatus('idle');
   }, [verifyEmail]);
 
   const handleInstall = useCallback(async () => {
@@ -149,19 +127,8 @@ export default function Login() {
           <p className="login-subtitle">Your Digital Travel Companion</p>
         </div>
 
-        {/* Tabs: only traveler-friendly options */}
-        <div className="login-tabs" role="tablist" aria-label="Sign in method">
-          <button role="tab" aria-selected={activeTab === 'booking-lookup'} className={`login-tab ${activeTab === 'booking-lookup' ? 'login-tab-active' : ''}`} onClick={() => setActiveTab('booking-lookup')}>
-            Find My Booking
-          </button>
-          <button role="tab" aria-selected={activeTab === 'magic-link'} className={`login-tab ${activeTab === 'magic-link' ? 'login-tab-active' : ''}`} onClick={() => setActiveTab('magic-link')}>
-            Email Sign In
-          </button>
-        </div>
-
-        {/* Booking Lookup — default, most intuitive for travelers */}
-        {activeTab === 'booking-lookup' && (
-          <div role="tabpanel">
+        {/* Booking Lookup — single login method */}
+        <div>
             <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '1rem', lineHeight: 1.5 }}>
               Enter your booking ID and last name to access your trip details.
             </p>
@@ -180,33 +147,6 @@ export default function Login() {
               </button>
             </form>
           </div>
-        )}
-
-        {/* Magic Link */}
-        {activeTab === 'magic-link' && (
-          <div role="tabpanel">
-            {magicLinkSent ? (
-              <div className="login-success" aria-live="polite">
-                <p className="login-success-text">✓ Check your email for a sign-in link.</p>
-                <button className="login-btn login-btn-secondary" onClick={() => setMagicLinkSent(false)}>Send Another</button>
-              </div>
-            ) : (
-              <form onSubmit={handleMagicLink} noValidate>
-                <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '1rem', lineHeight: 1.5 }}>
-                  We'll send a sign-in link to your registered email address.
-                </p>
-                <div className="login-field">
-                  <label htmlFor="magic-email" className="login-label">Email Address</label>
-                  <input id="magic-email" type="email" className="login-input" placeholder="you@example.com" value={email} onChange={(e) => setEmail(e.target.value)} required autoComplete="email" aria-required="true" />
-                </div>
-                {magicLinkError && <p className="login-error" role="alert">{magicLinkError}</p>}
-                <button type="submit" className="login-btn login-btn-primary" disabled={magicLinkLoading || !email}>
-                  {magicLinkLoading ? 'Sending…' : 'Send Sign-In Link'}
-                </button>
-              </form>
-            )}
-          </div>
-        )}
 
         {/* Install App — always visible with platform-specific instructions */}
         <div style={{ marginTop: '1.25rem', paddingTop: '1.25rem', borderTop: '1px solid var(--border-light)' }}>

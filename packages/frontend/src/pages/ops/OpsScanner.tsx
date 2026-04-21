@@ -102,6 +102,22 @@ export function OpsScanner() {
     setHistory((h) => [{ id: `${Date.now()}`, time: new Date().toLocaleTimeString(), name, status, message }, ...h].slice(0, 50));
   }, []);
 
+  // ─── Persist check-in to database (fire and forget) ────────
+
+  const persistCheckin = useCallback((travelerId: string, scanStatus: ScanStatus) => {
+    const persistStatus = scanStatus === 'pass' ? 'pass' : scanStatus === 'wrong_fleet' ? 'denied' : null;
+    if (!persistStatus) return;
+    apiClient('/api/v1/admin/checkin', {
+      method: 'POST',
+      body: JSON.stringify({
+        traveler_id: travelerId,
+        session,
+        fleet: fleet || null,
+        status: persistStatus,
+      }),
+    }).catch(() => { /* fire and forget — don't block scanning UI */ });
+  }, [session, fleet]);
+
   // ─── Check-in logic ────────────────────────────────────────
 
   const checkIn = useCallback((t: ExtendedMasterListRow, forceFleet = false) => {
@@ -115,6 +131,7 @@ export function OpsScanner() {
       } else {
         scannedRef.current.add(k);
         r = { status: 'pass', traveler: t, message: 'Hotel check-in OK' };
+        persistCheckin(t.traveler_id, 'pass');
       }
     } else {
       const ea = (t.event_attendance ?? []).find((e: EventAttendanceItem) => e.event_name === session);
@@ -134,6 +151,7 @@ export function OpsScanner() {
         } else {
           scannedRef.current.add(k);
           r = { status: 'pass', traveler: t, message: forceFleet ? 'Force checked in (wrong fleet override)' : 'Checked in ✓' };
+          persistCheckin(t.traveler_id, forceFleet ? 'pass' : 'pass');
         }
       }
     }
@@ -148,21 +166,51 @@ export function OpsScanner() {
   // Wrong fleet actions
   const handleForceCheckIn = useCallback(() => {
     if (wrongFleetTraveler) {
+      // Persist the wrong fleet override
+      apiClient('/api/v1/admin/checkin', {
+        method: 'POST',
+        body: JSON.stringify({
+          traveler_id: wrongFleetTraveler.traveler_id,
+          session,
+          fleet: fleet || null,
+          status: 'wrong_fleet_override',
+        }),
+      }).catch(() => { /* fire and forget */ });
       checkIn(wrongFleetTraveler, true);
     }
-  }, [wrongFleetTraveler, checkIn]);
+  }, [wrongFleetTraveler, checkIn, session, fleet]);
 
   const handleDenyCheckIn = useCallback(() => {
+    if (wrongFleetTraveler) {
+      // Persist the denial
+      apiClient('/api/v1/admin/checkin', {
+        method: 'POST',
+        body: JSON.stringify({
+          traveler_id: wrongFleetTraveler.traveler_id,
+          session,
+          fleet: fleet || null,
+          status: 'denied',
+        }),
+      }).catch(() => { /* fire and forget */ });
+    }
     const tName = wrongFleetTraveler ? `${wrongFleetTraveler.first_name ?? ''} ${wrongFleetTraveler.last_name ?? ''}`.trim() : null;
     addHistory(tName, 'wrong_fleet', 'Denied — wrong fleet');
     setResult(null);
     setWrongFleetTraveler(null);
     pausedRef.current = false;
-  }, [wrongFleetTraveler, addHistory]);
+  }, [wrongFleetTraveler, addHistory, session, fleet]);
 
   // ─── QR decode ─────────────────────────────────────────────
 
   const onQrDetected = useCallback((val: string) => {
+    // Fix #1: Block scanning if QR map hasn't loaded yet
+    if (qrMap.size === 0) {
+      setResult({ status: 'invalid', message: 'Scanner loading, please wait…' });
+      if (clearRef.current) clearTimeout(clearRef.current);
+      clearRef.current = setTimeout(() => { setResult(null); pausedRef.current = false; }, CLEAR_MS);
+      return;
+    }
+
     pausedRef.current = true;
 
     // 1. Try QR token map (primary lookup)
@@ -309,8 +357,8 @@ export function OpsScanner() {
             {fleets.map((f) => <option key={f} value={f}>{f}</option>)}
           </select>
         </div>
-        <button disabled={!session} onClick={() => setMode('scanning')} style={{ width: '100%', padding: '1.1rem', fontSize: '1.3rem', fontWeight: 800, borderRadius: 14, border: 'none', color: '#fff', background: session ? '#16a34a' : '#ccc', cursor: session ? 'pointer' : 'not-allowed' }}>
-          📷 Start Scanning
+        <button disabled={!session || qrMapLoading} onClick={() => setMode('scanning')} style={{ width: '100%', padding: '1.1rem', fontSize: '1.3rem', fontWeight: 800, borderRadius: 14, border: 'none', color: '#fff', background: session && !qrMapLoading ? '#16a34a' : '#ccc', cursor: session && !qrMapLoading ? 'pointer' : 'not-allowed' }}>
+          {qrMapLoading ? '⏳ Loading QR Database…' : '📷 Start Scanning'}
         </button>
       </div>
     );
@@ -381,6 +429,13 @@ export function OpsScanner() {
         ) : (
           <div style={{ position: 'relative', borderRadius: 12, overflow: 'hidden', background: '#000', marginBottom: '0.75rem' }}>
             <video ref={videoRef} playsInline muted style={{ width: '100%', display: 'block', maxHeight: 320 }} />
+            {qrMap.size === 0 && (
+              <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', color: '#fff', zIndex: 5 }}>
+                <div style={{ fontSize: '1.5rem', marginBottom: '0.5rem' }}>⏳</div>
+                <div style={{ fontWeight: 700, fontSize: '1rem' }}>Loading QR database…</div>
+                <div style={{ fontSize: '0.8rem', marginTop: '0.25rem', opacity: 0.8 }}>Scanning will start automatically</div>
+              </div>
+            )}
             <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%,-50%)', width: 180, height: 180, border: '3px solid rgba(255,255,255,0.5)', borderRadius: 16, pointerEvents: 'none' }} />
             <div style={{ position: 'absolute', bottom: 6, left: 0, right: 0, textAlign: 'center', color: '#fff', fontSize: '0.75rem', textShadow: '0 1px 3px rgba(0,0,0,0.8)' }}>
               Point at QR code

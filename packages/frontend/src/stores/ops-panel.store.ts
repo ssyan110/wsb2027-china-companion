@@ -120,14 +120,22 @@ export const useOpsPanelStore = create<OpsPanelState>((set, get) => ({
   },
 
   patchTraveler: async (id, field, value) => {
+    // Optimistic update
+    set((state) => ({
+      data: state.data.map((row) =>
+        row.traveler_id === id ? { ...row, [field]: value } : row
+      ),
+    }));
     try {
       await apiClient(`/api/v1/admin/travelers/${id}`, {
         method: 'PATCH',
         body: JSON.stringify({ [field]: value }),
       });
-      // Refresh data on success
+      // Full refresh for consistency
       await get().fetchData();
     } catch (err) {
+      // Revert on error
+      await get().fetchData();
       throw err instanceof Error ? err : new Error('Failed to update traveler');
     }
   },
