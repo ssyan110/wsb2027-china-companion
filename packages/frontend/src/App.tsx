@@ -37,6 +37,7 @@ import { OpsEvents } from './pages/ops/OpsEvents';
 import { OpsAuditLog } from './pages/ops/OpsAuditLog';
 import { OpsLogin } from './pages/ops/OpsLogin';
 import { OpsScanner } from './pages/ops/OpsScanner';
+import { OpsStaff } from './pages/ops/OpsStaff';
 
 export function App() {
   const setOnline = useAppStore((s) => s.setOnline);
@@ -106,6 +107,7 @@ export function App() {
         <Route path="flights" element={<OpsFlights />} />
         <Route path="events" element={<OpsEvents />} />
         <Route path="scanner" element={<OpsScanner />} />
+        <Route path="staff" element={<OpsStaff />} />
         <Route path="audit" element={<OpsAuditLog />} />
       </Route>
     </Routes>

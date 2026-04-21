@@ -785,6 +785,91 @@ export function createAdminRouter(db: Pool) {
     } catch { res.status(500).json({ error: 'server_error', message: 'Internal server error' }); }
   });
 
+  // ── Staff Management ────────────────────────────────────
+
+  // GET /api/v1/admin/my-permissions — Get current user's permissions
+  router.get('/my-permissions', async (req, res) => {
+    try {
+      if (!req.traveler_id) { res.status(401).json({ error: 'unauthorized' }); return; }
+      const result = await db.query(
+        'SELECT permission FROM staff_permissions WHERE traveler_id = $1',
+        [req.traveler_id]
+      );
+      const permissions = result.rows.map(r => r.permission as string);
+      // Super admins always have all permissions
+      if (req.role === 'super_admin') {
+        res.json({ permissions: ['scanner', 'master_table', 'hotels', 'flights', 'events', 'audit_log', 'staff_management'] });
+        return;
+      }
+      res.json({ permissions });
+    } catch { res.status(500).json({ error: 'server_error', message: 'Internal server error' }); }
+  });
+
+  // GET /api/v1/admin/staff — List all staff/admin accounts with their permissions
+  router.get('/staff', async (req, res) => {
+    try {
+      if (req.role !== 'super_admin') { res.status(403).json({ error: 'forbidden' }); return; }
+      const result = await db.query(`
+        SELECT t.traveler_id, t.first_name, t.last_name, t.full_name_raw, t.email_primary, t.role_type,
+               COALESCE(array_agg(sp.permission) FILTER (WHERE sp.permission IS NOT NULL), '{}') AS permissions
+        FROM travelers t
+        LEFT JOIN staff_permissions sp ON sp.traveler_id = t.traveler_id
+        WHERE t.role_type IN ('admin', 'super_admin', 'staff', 'staff_desk')
+        GROUP BY t.traveler_id
+        ORDER BY t.role_type, t.full_name_raw
+      `);
+      res.json({ staff: result.rows });
+    } catch { res.status(500).json({ error: 'server_error', message: 'Internal server error' }); }
+  });
+
+  // POST /api/v1/admin/staff — Create a new staff/admin account
+  router.post('/staff', async (req, res) => {
+    try {
+      if (req.role !== 'super_admin') { res.status(403).json({ error: 'forbidden' }); return; }
+      const { first_name, last_name, email, role_type } = req.body as {
+        first_name?: string; last_name?: string; email?: string; role_type?: string;
+      };
+      if (!['staff', 'staff_desk', 'admin'].includes(role_type ?? '')) {
+        res.status(400).json({ error: 'validation_error', message: 'role_type must be staff, staff_desk, or admin' }); return;
+      }
+      const result = await adminService.createTraveler({
+        full_name: `${first_name} ${last_name}`,
+        email: email!, role_type: role_type as RoleType, first_name, last_name,
+      });
+      if ('error' in result) { res.status(400).json(result); return; }
+      // Grant default scanner permission
+      await db.query('INSERT INTO staff_permissions (traveler_id, permission, granted_by) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING',
+        [result.traveler_id, 'scanner', req.traveler_id]);
+      // If admin, grant all view permissions
+      if (role_type === 'admin') {
+        for (const perm of ['master_table', 'hotels', 'flights', 'events']) {
+          await db.query('INSERT INTO staff_permissions (traveler_id, permission, granted_by) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING',
+            [result.traveler_id, perm, req.traveler_id]);
+        }
+      }
+      res.status(201).json(result);
+    } catch { res.status(500).json({ error: 'server_error', message: 'Internal server error' }); }
+  });
+
+  // PATCH /api/v1/admin/staff/:id/permissions — Update permissions for a staff member
+  router.patch('/staff/:id/permissions', async (req, res) => {
+    try {
+      if (req.role !== 'super_admin') { res.status(403).json({ error: 'forbidden' }); return; }
+      const { permissions } = req.body as { permissions: string[] };
+      const validPerms = ['scanner', 'master_table', 'hotels', 'flights', 'events', 'audit_log'];
+      const filtered = permissions.filter(p => validPerms.includes(p));
+
+      // Delete all existing permissions for this staff member
+      await db.query('DELETE FROM staff_permissions WHERE traveler_id = $1', [req.params.id]);
+      // Insert new permissions
+      for (const perm of filtered) {
+        await db.query('INSERT INTO staff_permissions (traveler_id, permission, granted_by) VALUES ($1, $2, $3)',
+          [req.params.id, perm, req.traveler_id]);
+      }
+      res.json({ success: true, permissions: filtered });
+    } catch { res.status(500).json({ error: 'server_error', message: 'Internal server error' }); }
+  });
+
   // ── Assignment endpoints ─────────────────────────────────
 
   router.post('/travelers/:id/assign-group', async (req, res) => {
