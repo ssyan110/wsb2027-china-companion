@@ -9,6 +9,7 @@ const NAV_ITEMS = [
   { to: '/ops/rooms', label: 'Hotels', icon: '🏨', superAdminOnly: false },
   { to: '/ops/flights', label: 'Flights', icon: '✈️', superAdminOnly: false },
   { to: '/ops/events', label: 'Events', icon: '📅', superAdminOnly: false },
+  { to: '/ops/scanner', label: 'Scanner', icon: '📷', superAdminOnly: false },
   { to: '/ops/audit', label: 'Audit Log', icon: '📝', superAdminOnly: true },
 ];
 

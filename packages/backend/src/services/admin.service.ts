@@ -41,6 +41,11 @@ export interface CreateTravelerInput {
   guardian_id?: string;
   phone?: string;
   passport_name?: string;
+  first_name?: string;
+  last_name?: string;
+  gender?: string;
+  age?: number;
+  pax_type?: string;
 }
 
 export interface UpdateTravelerInput {
@@ -282,6 +287,10 @@ export function createAdminService(deps: AdminServiceDeps) {
     const qrToken = crypto.randomBytes(32).toString('base64url');
     const tokenHash = crypto.createHash('sha256').update(qrToken).digest('hex');
 
+    // Compute first_name / last_name from explicit input or by splitting full_name
+    const firstName = input.first_name ?? input.full_name.split(' ')[0] ?? '';
+    const lastName = input.last_name ?? input.full_name.split(' ').slice(1).join(' ') ?? '';
+
     const client = await db.connect();
     try {
       await client.query('BEGIN');
@@ -289,8 +298,9 @@ export function createAdminService(deps: AdminServiceDeps) {
       const travelerResult = await client.query(
         `INSERT INTO travelers
            (full_name_raw, full_name_normalized, email_primary, role_type,
-            booking_id, family_id, guardian_id, phone, passport_name)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            booking_id, family_id, guardian_id, phone, passport_name,
+            first_name, last_name, gender, age, pax_type)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
          RETURNING traveler_id, booking_id, family_id, guardian_id,
                    full_name_raw, full_name_normalized, email_primary,
                    role_type, access_status, created_at, updated_at`,
@@ -304,6 +314,11 @@ export function createAdminService(deps: AdminServiceDeps) {
           input.guardian_id ?? null,
           input.phone ?? null,
           input.passport_name ?? null,
+          firstName,
+          lastName,
+          input.gender ?? null,
+          input.age ?? null,
+          input.pax_type ?? null,
         ],
       );
 
