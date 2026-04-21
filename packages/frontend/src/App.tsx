@@ -100,7 +100,7 @@ export function App() {
       {/* Ops Panel route tree */}
       <Route path="/ops/login" element={<OpsLogin />} />
       <Route path="/ops" element={<OpsLayout />}>
-        <Route index element={<Navigate to="/ops/travelers" replace />} />
+        <Route index element={<Navigate to="/ops/scanner" replace />} />
         <Route path="travelers" element={<OpsMasterTable />} />
         <Route path="rooms" element={<OpsRooms />} />
         <Route path="flights" element={<OpsFlights />} />

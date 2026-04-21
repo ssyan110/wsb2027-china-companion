@@ -5,11 +5,11 @@ import { useOpsPanelStore } from '../../stores/ops-panel.store';
 import { ToastContainer } from '../Toast';
 
 const NAV_ITEMS = [
+  { to: '/ops/scanner', label: 'Scanner', icon: '📷', superAdminOnly: false },
   { to: '/ops/travelers', label: 'Master Table', icon: '📋', superAdminOnly: false },
   { to: '/ops/rooms', label: 'Hotels', icon: '🏨', superAdminOnly: false },
   { to: '/ops/flights', label: 'Flights', icon: '✈️', superAdminOnly: false },
   { to: '/ops/events', label: 'Events', icon: '📅', superAdminOnly: false },
-  { to: '/ops/scanner', label: 'Scanner', icon: '📷', superAdminOnly: false },
   { to: '/ops/audit', label: 'Audit Log', icon: '📝', superAdminOnly: true },
 ];
 
