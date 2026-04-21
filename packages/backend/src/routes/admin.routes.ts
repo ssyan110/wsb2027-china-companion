@@ -29,6 +29,68 @@ export function createAdminRouter(db: Pool) {
 
   // ── Master List ──────────────────────────────────────────────
 
+  // GET /api/v1/admin/qr-map — returns QR token → traveler_id mapping for scanner
+  router.get('/qr-map', async (req, res) => {
+    try {
+      if (!req.traveler_id) { res.status(401).json({ error: 'unauthorized' }); return; }
+      const result = await db.query(
+        `SELECT q.token_value, q.traveler_id, q.is_active, t.booking_id,
+                t.first_name, t.last_name, t.full_name_raw
+         FROM qr_tokens q
+         JOIN travelers t ON q.traveler_id = t.traveler_id
+         WHERE q.is_active = true`
+      );
+      res.json({ tokens: result.rows });
+    } catch {
+      res.status(500).json({ error: 'server_error' });
+    }
+  });
+
+  // POST /api/v1/admin/scan-verify — verify a QR scan and return traveler info
+  router.post('/scan-verify', async (req, res) => {
+    try {
+      if (!req.traveler_id) { res.status(401).json({ error: 'unauthorized' }); return; }
+      const { qr_value } = req.body as { qr_value?: string };
+      if (!qr_value) { res.status(400).json({ error: 'validation_error', message: 'qr_value required' }); return; }
+
+      // Look up by token_value, booking_id, or traveler_id
+      const result = await db.query(
+        `SELECT t.traveler_id, t.booking_id, t.first_name, t.last_name, t.full_name_raw,
+                t.checkin_status, t.pax_type, q.token_value, q.is_active
+         FROM travelers t
+         LEFT JOIN qr_tokens q ON q.traveler_id = t.traveler_id AND q.is_active = true
+         WHERE q.token_value = $1 OR t.booking_id = $1 OR t.traveler_id::text = $1
+         LIMIT 1`,
+        [qr_value]
+      );
+
+      if (result.rows.length === 0) {
+        // Check if it's a revoked token
+        const revoked = await db.query('SELECT 1 FROM qr_tokens WHERE token_value = $1 AND is_active = false', [qr_value]);
+        if (revoked.rows.length > 0) {
+          res.json({ status: 'revoked', message: 'QR token has been revoked — contact staff' });
+          return;
+        }
+        res.json({ status: 'not_found', message: 'QR code not recognized' });
+        return;
+      }
+
+      const row = result.rows[0];
+      res.json({
+        status: 'found',
+        traveler_id: row.traveler_id,
+        booking_id: row.booking_id,
+        first_name: row.first_name,
+        last_name: row.last_name,
+        full_name: row.full_name_raw,
+        checkin_status: row.checkin_status,
+        pax_type: row.pax_type,
+      });
+    } catch {
+      res.status(500).json({ error: 'server_error' });
+    }
+  });
+
   // GET /api/v1/admin/master-list
   router.get('/master-list', async (req, res) => {
     try {

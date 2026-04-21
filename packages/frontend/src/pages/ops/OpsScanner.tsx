@@ -1,11 +1,12 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useOpsPanelStore } from '../../stores/ops-panel.store';
+import { apiClient } from '../../lib/api';
 import type { ExtendedMasterListRow, EventAttendanceItem } from '@wsb/shared';
 
 // jsQR loaded from CDN in index.html
 declare function jsQR(data: Uint8ClampedArray, width: number, height: number): { data: string } | null;
 
-type ScanStatus = 'pass' | 'already' | 'wrong_fleet' | 'invalid' | 'not_assigned';
+type ScanStatus = 'pass' | 'already' | 'wrong_fleet' | 'invalid' | 'not_assigned' | 'revoked';
 type AppMode = 'setup' | 'scanning' | 'manual-search';
 
 interface ScanResult {
@@ -13,6 +14,14 @@ interface ScanResult {
   traveler?: ExtendedMasterListRow;
   message: string;
   correctFleet?: string;
+}
+
+interface QrMapEntry {
+  token_value: string;
+  traveler_id: string;
+  booking_id: string | null;
+  first_name: string | null;
+  last_name: string | null;
 }
 
 interface HistoryEntry {
@@ -29,6 +38,7 @@ const STATUS = {
   wrong_fleet:  { bg: '#fef9c3', border: '#ca8a04', color: '#a16207', icon: '⚠️', label: 'Wrong Fleet' },
   invalid:      { bg: '#fee2e2', border: '#dc2626', color: '#b91c1c', icon: '❌', label: 'Not Found' },
   not_assigned: { bg: '#fee2e2', border: '#dc2626', color: '#b91c1c', icon: '❌', label: 'Not Assigned' },
+  revoked:      { bg: '#fee2e2', border: '#dc2626', color: '#b91c1c', icon: '🚫', label: 'Token Revoked' },
 } as const;
 
 const CLEAR_MS = 4000;
@@ -41,11 +51,16 @@ export function OpsScanner() {
   const [session, setSession] = useState('');
   const [fleet, setFleet] = useState('');
 
+  // QR token map: token_value → traveler_id
+  const [qrMap, setQrMap] = useState<Map<string, QrMapEntry>>(new Map());
+  const [qrMapLoading, setQrMapLoading] = useState(false);
+
   // Camera
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const animRef = useRef<number>(0);
+  const pausedRef = useRef(false);
   const [camErr, setCamErr] = useState<string | null>(null);
 
   // Manual search
@@ -55,8 +70,9 @@ export function OpsScanner() {
   const [disambig, setDisambig] = useState<ExtendedMasterListRow[] | null>(null);
   const [birthYear, setBirthYear] = useState('');
 
-  // Result + history
+  // Result + wrong fleet prompt
   const [result, setResult] = useState<ScanResult | null>(null);
+  const [wrongFleetTraveler, setWrongFleetTraveler] = useState<ExtendedMasterListRow | null>(null);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const scannedRef = useRef<Set<string>>(new Set());
   const clearRef = useRef<ReturnType<typeof setTimeout>>();
@@ -64,68 +80,143 @@ export function OpsScanner() {
   const events = Array.from(new Set(data.flatMap((r) => (r.event_attendance ?? []).map((e: EventAttendanceItem) => e.event_name)))).sort();
   const fleets = Array.from(new Set(data.flatMap((r) => (r.event_attendance ?? []).map((e: EventAttendanceItem) => e.fleet_number).filter(Boolean)))).sort() as string[];
 
+  // Load data + QR map
   useEffect(() => { if (data.length === 0) fetchData(); }, [data.length, fetchData]);
+
+  const loadQrMap = useCallback(async () => {
+    setQrMapLoading(true);
+    try {
+      const res = await apiClient<{ tokens: QrMapEntry[] }>('/api/v1/admin/qr-map');
+      const map = new Map<string, QrMapEntry>();
+      for (const t of res.tokens) map.set(t.token_value, t);
+      setQrMap(map);
+    } catch { /* will fall back to booking_id lookup */ }
+    setQrMapLoading(false);
+  }, []);
+
+  useEffect(() => { loadQrMap(); }, [loadQrMap]);
+
+  // ─── Add to history ────────────────────────────────────────
+
+  const addHistory = useCallback((name: string | null, status: ScanStatus, message: string) => {
+    setHistory((h) => [{ id: `${Date.now()}`, time: new Date().toLocaleTimeString(), name, status, message }, ...h].slice(0, 50));
+  }, []);
 
   // ─── Check-in logic ────────────────────────────────────────
 
-  const checkIn = useCallback((t: ExtendedMasterListRow) => {
+  const checkIn = useCallback((t: ExtendedMasterListRow, forceFleet = false) => {
+    const tName = `${t.first_name ?? ''} ${t.last_name ?? ''}`.trim() || t.full_name_raw;
     let r: ScanResult;
+
     if (session === 'hotel-checkin') {
       const k = `hotel:${t.traveler_id}`;
-      if (scannedRef.current.has(k)) { r = { status: 'already', traveler: t, message: 'Already scanned' }; }
-      else { scannedRef.current.add(k); r = { status: 'pass', traveler: t, message: 'Hotel check-in OK' }; }
+      if (scannedRef.current.has(k)) {
+        r = { status: 'already', traveler: t, message: 'Already scanned' };
+      } else {
+        scannedRef.current.add(k);
+        r = { status: 'pass', traveler: t, message: 'Hotel check-in OK' };
+      }
     } else {
       const ea = (t.event_attendance ?? []).find((e: EventAttendanceItem) => e.event_name === session);
-      if (!ea) { r = { status: 'not_assigned', traveler: t, message: `Not on ${session} list` }; }
-      else {
+      if (!ea) {
+        r = { status: 'not_assigned', traveler: t, message: `Not on ${session} list` };
+      } else {
         const k = `${session}:${t.traveler_id}`;
-        if (scannedRef.current.has(k)) { r = { status: 'already', traveler: t, message: 'Already scanned' }; }
-        else if (fleet && ea.fleet_number && ea.fleet_number !== fleet) {
+        if (scannedRef.current.has(k)) {
+          r = { status: 'already', traveler: t, message: 'Already scanned' };
+        } else if (!forceFleet && fleet && ea.fleet_number && ea.fleet_number !== fleet) {
+          // Wrong fleet — show prompt instead of auto-clearing
+          r = { status: 'wrong_fleet', traveler: t, message: `Assigned to ${ea.fleet_number}, not ${fleet}`, correctFleet: ea.fleet_number };
+          setResult(r);
+          setWrongFleetTraveler(t);
+          addHistory(tName, 'wrong_fleet', r.message);
+          return; // Don't auto-clear — wait for user decision
+        } else {
           scannedRef.current.add(k);
-          r = { status: 'wrong_fleet', traveler: t, message: `Wrong fleet — should be ${ea.fleet_number}`, correctFleet: ea.fleet_number };
-        } else { scannedRef.current.add(k); r = { status: 'pass', traveler: t, message: 'Checked in ✓' }; }
+          r = { status: 'pass', traveler: t, message: forceFleet ? 'Force checked in (wrong fleet override)' : 'Checked in ✓' };
+        }
       }
     }
-    setResult(r);
-    setHistory((h) => [{ id: `${Date.now()}`, time: new Date().toLocaleTimeString(), name: `${t.first_name ?? ''} ${t.last_name ?? ''}`.trim() || t.full_name_raw, status: r.status, message: r.message }, ...h].slice(0, 50));
-    if (clearRef.current) clearTimeout(clearRef.current);
-    clearRef.current = setTimeout(() => setResult(null), CLEAR_MS);
-  }, [session, fleet]);
 
-  // ─── QR decode from camera frame ───────────────────────────
+    setResult(r);
+    setWrongFleetTraveler(null);
+    addHistory(tName, r.status, r.message);
+    if (clearRef.current) clearTimeout(clearRef.current);
+    clearRef.current = setTimeout(() => { setResult(null); pausedRef.current = false; }, CLEAR_MS);
+  }, [session, fleet, addHistory]);
+
+  // Wrong fleet actions
+  const handleForceCheckIn = useCallback(() => {
+    if (wrongFleetTraveler) {
+      checkIn(wrongFleetTraveler, true);
+    }
+  }, [wrongFleetTraveler, checkIn]);
+
+  const handleDenyCheckIn = useCallback(() => {
+    const tName = wrongFleetTraveler ? `${wrongFleetTraveler.first_name ?? ''} ${wrongFleetTraveler.last_name ?? ''}`.trim() : null;
+    addHistory(tName, 'wrong_fleet', 'Denied — wrong fleet');
+    setResult(null);
+    setWrongFleetTraveler(null);
+    pausedRef.current = false;
+  }, [wrongFleetTraveler, addHistory]);
+
+  // ─── QR decode ─────────────────────────────────────────────
 
   const onQrDetected = useCallback((val: string) => {
-    const t = data.find((r) => r.booking_id === val || r.traveler_id === val);
-    if (!t) {
-      setResult({ status: 'invalid', message: `QR not recognized` });
-      if (clearRef.current) clearTimeout(clearRef.current);
-      clearRef.current = setTimeout(() => setResult(null), CLEAR_MS);
-      return;
+    pausedRef.current = true;
+
+    // 1. Try QR token map (primary lookup)
+    const qrEntry = qrMap.get(val);
+    if (qrEntry) {
+      const t = data.find((r) => r.traveler_id === qrEntry.traveler_id);
+      if (t) { checkIn(t); return; }
     }
-    checkIn(t);
-  }, [data, checkIn]);
+
+    // 2. Try booking_id
+    const byBooking = data.find((r) => r.booking_id === val);
+    if (byBooking) { checkIn(byBooking); return; }
+
+    // 3. Try traveler_id
+    const byId = data.find((r) => r.traveler_id === val);
+    if (byId) { checkIn(byId); return; }
+
+    // 4. Not found — check if revoked token via API
+    apiClient<{ status: string }>('/api/v1/admin/scan-verify', {
+      method: 'POST', body: JSON.stringify({ qr_value: val }),
+    }).then((res) => {
+      if (res.status === 'revoked') {
+        setResult({ status: 'revoked', message: 'QR token revoked — contact admin' });
+      } else {
+        setResult({ status: 'invalid', message: 'QR code not recognized' });
+      }
+      addHistory(null, 'invalid', 'QR not recognized');
+      if (clearRef.current) clearTimeout(clearRef.current);
+      clearRef.current = setTimeout(() => { setResult(null); pausedRef.current = false; }, CLEAR_MS);
+    }).catch(() => {
+      setResult({ status: 'invalid', message: 'QR code not recognized' });
+      addHistory(null, 'invalid', 'QR not recognized');
+      if (clearRef.current) clearTimeout(clearRef.current);
+      clearRef.current = setTimeout(() => { setResult(null); pausedRef.current = false; }, CLEAR_MS);
+    });
+  }, [qrMap, data, checkIn, addHistory]);
+
+  // ─── Camera scanning with jsQR ─────────────────────────────
 
   const scanFrame = useCallback(() => {
+    if (pausedRef.current) { animRef.current = requestAnimationFrame(scanFrame); return; }
     const video = videoRef.current;
     const canvas = canvasRef.current;
-    if (!video || !canvas || video.readyState < 2) {
-      animRef.current = requestAnimationFrame(scanFrame);
-      return;
-    }
+    if (!video || !canvas || video.readyState < 2) { animRef.current = requestAnimationFrame(scanFrame); return; }
+
     const ctx = canvas.getContext('2d', { willReadFrequently: true })!;
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
     ctx.drawImage(video, 0, 0);
-    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
 
     if (typeof jsQR === 'function') {
-      const code = jsQR(imageData.data, canvas.width, canvas.height);
-      if (code && code.data) {
-        // Pause scanning during result display
-        onQrDetected(code.data);
-        setTimeout(() => { animRef.current = requestAnimationFrame(scanFrame); }, CLEAR_MS + 500);
-        return;
-      }
+      const code = jsQR(img.data, canvas.width, canvas.height);
+      if (code?.data) { onQrDetected(code.data); return; }
     }
     animRef.current = requestAnimationFrame(scanFrame);
   }, [onQrDetected]);
@@ -136,6 +227,7 @@ export function OpsScanner() {
       const s = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } } });
       streamRef.current = s;
       if (videoRef.current) { videoRef.current.srcObject = s; await videoRef.current.play(); }
+      pausedRef.current = false;
       animRef.current = requestAnimationFrame(scanFrame);
     } catch { setCamErr('Camera access denied or not available.'); }
   }, [scanFrame]);
@@ -150,6 +242,13 @@ export function OpsScanner() {
     if (mode === 'scanning') startCam();
     return () => stopCam();
   }, [mode, startCam, stopCam]);
+
+  // Resume scanning after result clears
+  useEffect(() => {
+    if (!result && mode === 'scanning' && !pausedRef.current) {
+      animRef.current = requestAnimationFrame(scanFrame);
+    }
+  }, [result, mode, scanFrame]);
 
   // ─── Manual search ─────────────────────────────────────────
 
@@ -192,10 +291,12 @@ export function OpsScanner() {
           <div style={{ fontSize: '3.5rem', marginBottom: '0.5rem' }}>📷</div>
           <h1 style={{ fontSize: '1.6rem', fontWeight: 800 }}>QR Scanner</h1>
           <p style={{ color: '#666', marginTop: '0.25rem' }}>Select session and fleet to begin</p>
+          {qrMapLoading && <p style={{ color: '#999', fontSize: '0.8rem', marginTop: '0.5rem' }}>Loading QR database…</p>}
+          {!qrMapLoading && qrMap.size > 0 && <p style={{ color: '#16a34a', fontSize: '0.8rem', marginTop: '0.5rem' }}>✓ {qrMap.size} QR codes loaded</p>}
         </div>
         <div style={{ marginBottom: '1.5rem' }}>
           <label style={{ display: 'block', fontWeight: 700, marginBottom: '0.5rem' }}>Session *</label>
-          <select value={session} onChange={(e) => setSession(e.target.value)} style={{ width: '100%', padding: '0.85rem', fontSize: '1.05rem', borderRadius: 10, border: '2px solid #e0e0e0' }}>
+          <select value={session} onChange={(e) => setSession(e.target.value)} style={selectLg}>
             <option value="">— Select —</option>
             <option value="hotel-checkin">🏨 Hotel Check-in</option>
             {events.map((n) => <option key={n} value={n}>📅 {n}</option>)}
@@ -203,7 +304,7 @@ export function OpsScanner() {
         </div>
         <div style={{ marginBottom: '2rem' }}>
           <label style={{ display: 'block', fontWeight: 700, marginBottom: '0.5rem' }}>Fleet</label>
-          <select value={fleet} onChange={(e) => setFleet(e.target.value)} style={{ width: '100%', padding: '0.85rem', fontSize: '1.05rem', borderRadius: 10, border: '2px solid #e0e0e0' }}>
+          <select value={fleet} onChange={(e) => setFleet(e.target.value)} style={selectLg}>
             <option value="">— All fleets —</option>
             {fleets.map((f) => <option key={f} value={f}>{f}</option>)}
           </select>
@@ -218,10 +319,10 @@ export function OpsScanner() {
   // ─── SCANNING / MANUAL SCREEN ──────────────────────────────
 
   const cfg = result ? STATUS[result.status] : null;
+  const isWrongFleetPrompt = result?.status === 'wrong_fleet' && wrongFleetTraveler;
 
   return (
     <div style={{ padding: '0.75rem', maxWidth: 700, margin: '0 auto' }}>
-      {/* Hidden canvas for frame capture */}
       <canvas ref={canvasRef} style={{ display: 'none' }} />
 
       {/* Top bar */}
@@ -234,13 +335,13 @@ export function OpsScanner() {
           <button onClick={() => setMode(mode === 'scanning' ? 'manual-search' : 'scanning')} style={smallBtn}>
             {mode === 'scanning' ? '🔍 Search' : '📷 Camera'}
           </button>
-          <button onClick={() => { stopCam(); setMode('setup'); setResult(null); }} style={smallBtn}>⚙️</button>
+          <button onClick={() => { stopCam(); setMode('setup'); setResult(null); setWrongFleetTraveler(null); }} style={smallBtn}>⚙️</button>
         </div>
       </div>
 
       {/* Result card */}
       {result && cfg && (
-        <div onClick={() => setResult(null)} role="alert" style={{ padding: '1.25rem', borderRadius: 14, textAlign: 'center', marginBottom: '0.75rem', cursor: 'pointer', background: cfg.bg, border: `3px solid ${cfg.border}` }}>
+        <div role="alert" style={{ padding: '1.25rem', borderRadius: 14, textAlign: 'center', marginBottom: '0.75rem', background: cfg.bg, border: `3px solid ${cfg.border}` }}>
           <div style={{ fontSize: '2.5rem' }}>{cfg.icon}</div>
           <div style={{ fontSize: '1.5rem', fontWeight: 800, color: cfg.color }}>{cfg.label}</div>
           <div style={{ fontSize: '0.95rem', color: '#374151', marginTop: '0.2rem' }}>{result.message}</div>
@@ -251,7 +352,20 @@ export function OpsScanner() {
               {result.correctFleet && <> · Correct: <strong>{result.correctFleet}</strong></>}
             </div>
           )}
-          <div style={{ marginTop: '0.4rem', fontSize: '0.65rem', color: '#9ca3af' }}>Tap to dismiss</div>
+
+          {/* Wrong fleet prompt — Force or Deny */}
+          {isWrongFleetPrompt ? (
+            <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'center', marginTop: '1rem' }}>
+              <button onClick={handleDenyCheckIn} style={{ padding: '0.75rem 1.5rem', borderRadius: 10, border: 'none', background: '#dc2626', color: '#fff', fontWeight: 700, fontSize: '1rem', cursor: 'pointer' }}>
+                ❌ Deny
+              </button>
+              <button onClick={handleForceCheckIn} style={{ padding: '0.75rem 1.5rem', borderRadius: 10, border: 'none', background: '#16a34a', color: '#fff', fontWeight: 700, fontSize: '1rem', cursor: 'pointer' }}>
+                ✅ Force Check-in
+              </button>
+            </div>
+          ) : (
+            <div onClick={() => { setResult(null); pausedRef.current = false; }} style={{ marginTop: '0.4rem', fontSize: '0.65rem', color: '#9ca3af', cursor: 'pointer' }}>Tap to dismiss</div>
+          )}
         </div>
       )}
 
@@ -330,5 +444,6 @@ export function OpsScanner() {
 
 const smallBtn: React.CSSProperties = { padding: '0.35rem 0.6rem', fontSize: '0.8rem', borderRadius: 6, border: '1px solid #ddd', background: '#fff', cursor: 'pointer' };
 const inputStyle: React.CSSProperties = { flex: 1, padding: '0.5rem', fontSize: '1rem', borderRadius: 8, border: '1px solid #ccc' };
+const selectLg: React.CSSProperties = { width: '100%', padding: '0.85rem', fontSize: '1.05rem', borderRadius: 10, border: '2px solid #e0e0e0' };
 
 export default OpsScanner;
